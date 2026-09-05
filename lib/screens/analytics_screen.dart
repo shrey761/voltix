@@ -1,286 +1,265 @@
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter/material.dart';
+import '../models/energy_models.dart';
+import '../services/energy_service.dart';
 
 class AnalyticsScreen extends StatelessWidget {
   const AnalyticsScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
+    final energyService = EnergyService();
 
     return Scaffold(
-
       backgroundColor: Colors.black,
-
       appBar: AppBar(
         backgroundColor: Colors.black,
         elevation: 0,
-
         title: const Text(
           "Weekly Analytics",
-          style: TextStyle(color: Colors.white),
+          style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
+      body: StreamBuilder<AnalyticsData?>(
+        stream: energyService.analyticsStream,
+        builder: (context, analyticsSnap) {
+          final analytics = analyticsSnap.data;
 
-      body: SingleChildScrollView(
+          return StreamBuilder<List<EnergyReading>>(
+            stream: energyService.recentReadingsStream,
+            builder: (context, readingsSnap) {
+              final readings = readingsSnap.data ?? [];
 
-        padding: const EdgeInsets.all(16),
+              // Calculate weekly total
+              double weeklyTotal = analytics?.weeklyTotalUnits ?? 0.0;
+              if (weeklyTotal == 0.0 && readings.isNotEmpty) {
+                final startOfWeek = DateTime.now().subtract(Duration(days: DateTime.now().weekday - 1));
+                final wReadings = readings.where((r) => r.timestamp.isAfter(startOfWeek)).toList();
+                if (wReadings.isNotEmpty) {
+                  weeklyTotal = (readings.last.totalEnergy - wReadings.first.totalEnergy).clamp(0.0, double.infinity);
+                }
+              }
 
-        child: Column(
+              // Extract daily bars
+              List<DailyBarItem> bars = analytics?.dailyBars ?? [];
+              if (bars.isEmpty) {
+                const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+                bars = List.generate(7, (i) => DailyBarItem(
+                  dayIndex: i,
+                  dayName: days[i],
+                  date: "",
+                  units: (i == DateTime.now().weekday - 1) ? weeklyTotal : 0.0,
+                ));
+              }
 
-          children: [
+              // Max bar height
+              double maxBarUnits = 5.0;
+              for (var b in bars) {
+                if (b.units > maxBarUnits) maxBarUnits = b.units;
+              }
+              maxBarUnits = (maxBarUnits * 1.25).clamp(5.0, 100.0);
 
-            // 🔥 Weekly Report Card
-            Container(
+              // Hourly loads
+              final h1 = analytics?.hourlyLoadRoom1 ?? List.filled(24, 0.0);
+              final h2 = analytics?.hourlyLoadRoom2 ?? List.filled(24, 0.0);
 
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-
-              decoration: BoxDecoration(
-                color: const Color(0xFF1C1C1E),
-                borderRadius: BorderRadius.circular(24),
-              ),
-
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-
-                children: [
-
-                  const Text(
-                    "Weekly Energy Report",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(height: 10),
-
-                  const Text(
-                    "32.5 kWh",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 34,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-
-                  const SizedBox(height: 4),
-
-                  const Text(
-                    "Total weekly energy consumption",
-                    style: TextStyle(
-                      color: Colors.white70,
-                    ),
-                  ),
-
-                  const SizedBox(height: 30),
-
-                  SizedBox(
-                    height: 220,
-
-                    child: BarChart(
-
-                      BarChartData(
-
-                        alignment: BarChartAlignment.spaceAround,
-
-                        maxY: 10,
-
-                        borderData: FlBorderData(show: false),
-
-                        gridData: FlGridData(
-                          show: true,
-                          drawVerticalLine: false,
-
-                          horizontalInterval: 2,
-
-                          getDrawingHorizontalLine: (value) {
-                            return FlLine(
-                              color: Colors.white10,
-                              strokeWidth: 1,
-                            );
-                          },
-                        ),
-
-                        titlesData: FlTitlesData(
-
-                          leftTitles: const AxisTitles(
-                            sideTitles: SideTitles(
-                              showTitles: false,
+              return SingleChildScrollView(
+                padding: const EdgeInsets.all(16),
+                child: Column(
+                  children: [
+                    // ==================================================
+                    // WEEKLY ENERGY REPORT CARD
+                    // ==================================================
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1C1C1E),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            "Weekly Energy Consumption",
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-
-                          topTitles: const AxisTitles(
-                            sideTitles: SideTitles(
-                              showTitles: false,
+                          const SizedBox(height: 10),
+                          Text(
+                            "${weeklyTotal.toStringAsFixed(2)} kWh",
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 34,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
-
-                          rightTitles: const AxisTitles(
-                            sideTitles: SideTitles(
-                              showTitles: false,
-                            ),
+                          const SizedBox(height: 4),
+                          const Text(
+                            "Sum of recorded weekly energy deltas",
+                            style: TextStyle(color: Colors.white70, fontSize: 13),
                           ),
+                          const SizedBox(height: 28),
 
-                          bottomTitles: AxisTitles(
-
-                            sideTitles: SideTitles(
-
-                              showTitles: true,
-
-                              getTitlesWidget: (value, meta) {
-
-                                const days = [
-                                  'M',
-                                  'T',
-                                  'W',
-                                  'T',
-                                  'F',
-                                  'S',
-                                  'S'
-                                ];
-
-                                return Padding(
-                                  padding: const EdgeInsets.only(top: 8),
-
-                                  child: Text(
-                                    days[value.toInt()],
-                                    style: const TextStyle(
-                                      color: Colors.white70,
+                          // 7-DAY BAR CHART
+                          SizedBox(
+                            height: 200,
+                            child: BarChart(
+                              BarChartData(
+                                alignment: BarChartAlignment.spaceAround,
+                                maxY: maxBarUnits,
+                                borderData: FlBorderData(show: false),
+                                gridData: FlGridData(
+                                  show: true,
+                                  drawVerticalLine: false,
+                                  horizontalInterval: maxBarUnits / 4,
+                                  getDrawingHorizontalLine: (value) => const FlLine(color: Colors.white10, strokeWidth: 1),
+                                ),
+                                titlesData: FlTitlesData(
+                                  leftTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                  topTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                  rightTitles: const AxisTitles(sideTitles: SideTitles(showTitles: false)),
+                                  bottomTitles: AxisTitles(
+                                    sideTitles: SideTitles(
+                                      showTitles: true,
+                                      getTitlesWidget: (value, meta) {
+                                        final idx = value.toInt();
+                                        if (idx < 0 || idx >= bars.length) return const SizedBox();
+                                        return Padding(
+                                          padding: const EdgeInsets.only(top: 8),
+                                          child: Text(
+                                            bars[idx].dayName,
+                                            style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600),
+                                          ),
+                                        );
+                                      },
                                     ),
                                   ),
-                                );
-                              },
+                                ),
+                                barGroups: List.generate(
+                                  bars.length,
+                                  (i) => makeBar(i, bars[i].units),
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-
-                        barGroups: [
-
-                          makeBar(0, 4),
-                          makeBar(1, 5),
-                          makeBar(2, 3),
-                          makeBar(3, 8),
-                          makeBar(4, 4),
-                          makeBar(5, 7),
-                          makeBar(6, 5),
-
                         ],
                       ),
                     ),
-                  ),
-                ],
-              ),
-            ),
+                    const SizedBox(height: 20),
 
-            const SizedBox(height: 20),
-
-            // 🔥 Peak Usage Time Heatmap
-            Container(
-
-              width: double.infinity,
-              padding: const EdgeInsets.all(20),
-
-              decoration: BoxDecoration(
-                color: const Color(0xFF1C1C1E),
-                borderRadius: BorderRadius.circular(24),
-              ),
-
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-
-                children: [
-
-                  const Text(
-                    "Peak Usage Times",
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
+                    // ==================================================
+                    // PEAK USAGE HEATMAP (ROOM 1 & ROOM 2 ONLY)
+                    // ==================================================
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFF1C1C1E),
+                        borderRadius: BorderRadius.circular(24),
+                        border: Border.all(color: Colors.white10),
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                "24-Hour Peak Load Profile",
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                "00:00 → 23:00",
+                                style: TextStyle(color: Colors.white38, fontSize: 12),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+                          buildRoomPeakHeatmap("Room 1", h1, Colors.orange),
+                          const SizedBox(height: 14),
+                          buildRoomPeakHeatmap("Room 2", h2, Colors.blueAccent),
+                        ],
+                      ),
                     ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  buildPeakRow("Room 1"),
-                  buildPeakRow("Room 2"),
-                  buildPeakRow("Kitchen"),
-                  buildPeakRow("Hall"),
-                ],
-              ),
-            ),
-          ],
-        ),
+                  ],
+                ),
+              );
+            },
+          );
+        },
       ),
     );
   }
 
-  // 🔥 BAR FUNCTION
-  BarChartGroupData makeBar(int x, double y) {
-
+  static BarChartGroupData makeBar(int x, double y) {
     return BarChartGroupData(
       x: x,
-
       barRods: [
-
         BarChartRodData(
           toY: y,
           width: 22,
-
-          borderRadius: BorderRadius.circular(8),
-
+          borderRadius: BorderRadius.circular(6),
           color: Colors.orange,
         ),
       ],
     );
   }
 
-  // 🔥 PEAK ROW
-  Widget buildPeakRow(String room) {
+  static Widget buildRoomPeakHeatmap(String room, List<double> hourlyWatts, Color baseColor) {
+    double maxW = 1.0;
+    for (var w in hourlyWatts) {
+      if (w > maxW) maxW = w;
+    }
 
     return Padding(
-
-      padding: const EdgeInsets.only(bottom: 14),
-
+      padding: const EdgeInsets.only(bottom: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-
         children: [
-
-          Text(
-            room,
-            style: const TextStyle(
-              color: Colors.white70,
-            ),
-          ),
-
-          const SizedBox(height: 8),
-
           Row(
-            children: List.generate(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                room,
+                style: const TextStyle(color: Colors.white70, fontWeight: FontWeight.w600, fontSize: 14),
+              ),
+              Text(
+                "Peak: ${maxW.toStringAsFixed(0)} W",
+                style: TextStyle(color: baseColor, fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: List.generate(24, (hourIndex) {
+              final val = (hourIndex < hourlyWatts.length) ? hourlyWatts[hourIndex] : 0.0;
+              final intensity = (val / maxW).clamp(0.1, 1.0);
 
-              12,
-
-                  (index) => Expanded(
-
-                child: Container(
-
-                  margin: const EdgeInsets.symmetric(horizontal: 2),
-
-                  height: 18,
-
-                  decoration: BoxDecoration(
-
-                    color: index % 3 == 0
-                        ? Colors.orange
-                        : Colors.orange.withOpacity(0.2),
-
-                    borderRadius: BorderRadius.circular(4),
+              return Expanded(
+                child: Tooltip(
+                  message: "$hourIndex:00 - ${val.toStringAsFixed(0)} W",
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 1),
+                    height: 20,
+                    decoration: BoxDecoration(
+                      color: val > 1200
+                          ? Colors.redAccent
+                          : baseColor.withOpacity(intensity),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
                   ),
                 ),
-              ),
-            ),
+              );
+            }),
           ),
         ],
       ),
