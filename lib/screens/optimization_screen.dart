@@ -29,27 +29,28 @@ class OptimizationScreen extends StatelessWidget {
             builder: (context, forecastSnap) {
               final forecast = forecastSnap.data;
 
-              final double savingsUnits = opt?.estimatedSavingsUnits ?? 8.5;
-              final double optEfficiency = opt?.optimizationEfficiencyPercent ?? 82.0;
-              final double r1Units = opt?.room1Units ?? (forecast?.monthToDateUnits ?? 0.0) * 0.6;
-              final double r2Units = opt?.room2Units ?? (forecast?.monthToDateUnits ?? 0.0) * 0.4;
-              final double r1Pct = opt?.room1Percent ?? 60.0;
-              final double r2Pct = opt?.room2Percent ?? 40.0;
+              final double r1Units = opt?.room1Units ?? ((forecast?.monthToDateUnits ?? 0.0) * 0.5);
+              final double r2Units = opt?.room2Units ?? ((forecast?.monthToDateUnits ?? 0.0) * 0.5);
+              final double r1Pct = opt?.room1Percent ?? 50.0;
+              final double r2Pct = opt?.room2Percent ?? 50.0;
+              final double mtd = forecast?.monthToDateUnits ?? 0.0;
+              final double projectedEnd = forecast?.projectedMonthEndUnits ?? 0.0;
+              final double remaining = forecast?.remainingUnits ?? 96.0;
 
               final suggestions = opt?.suggestions ?? [
                 OptimizationSuggestionItem(
-                  title: r1Units >= r2Units ? "Room 1 contributes highest usage" : "Room 2 contributes highest usage",
-                  subtitle: "Reduce continuous high-power appliance runtimes during afternoon peaks.",
+                  title: r1Units >= r2Units ? "Room 1 is the primary energy contributor" : "Room 2 is the primary energy contributor",
+                  subtitle: "Inspect high-wattage appliances and reduce idle runtime during active hours.",
                   icon: "warning",
                 ),
                 OptimizationSuggestionItem(
-                  title: "Shift heavy loads to off-peak hours",
-                  subtitle: "Recommended after 10:00 PM to maximize efficiency.",
-                  icon: "bolt",
+                  title: "Shift flexible loads to off-peak hours",
+                  subtitle: "Running high-wattage equipment during non-peak hours optimizes grid efficiency.",
+                  icon: "access_time",
                 ),
                 OptimizationSuggestionItem(
-                  title: "Stay within Gruha Jyothi 96-Unit Quota",
-                  subtitle: "Maintain daily average under ${(96.0 / (forecast?.daysInMonth ?? 30)).toStringAsFixed(1)} units/day.",
+                  title: "Stay within Gruha Jyothi quota",
+                  subtitle: "Maintain daily average under ${(96.0 / (forecast?.daysInMonth ?? 31)).toStringAsFixed(1)} units/day.",
                   icon: "energy_savings_leaf",
                 ),
               ];
@@ -59,7 +60,7 @@ class OptimizationScreen extends StatelessWidget {
                 child: Column(
                   children: [
                     // ==================================================
-                    // ESTIMATED MONTHLY SAVINGS CARD
+                    // OPTIMIZATION STATUS & QUOTA HEALTH CARD
                     // ==================================================
                     Container(
                       width: double.infinity,
@@ -81,7 +82,7 @@ class OptimizationScreen extends StatelessWidget {
                               ),
                               SizedBox(width: 10),
                               Text(
-                                "Savings Potential (Estimated)",
+                                "Optimization Opportunity",
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontSize: 20,
@@ -92,38 +93,45 @@ class OptimizationScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 20),
                           const Text(
-                            "Estimated Monthly Savings",
+                            "Current Quota Status",
                             style: TextStyle(color: Colors.white70),
                           ),
                           const SizedBox(height: 8),
                           Text(
-                            "~${savingsUnits.toStringAsFixed(1)} Units",
+                            "${mtd.toStringAsFixed(2)} / 96.0 Units Used",
                             style: const TextStyle(
                               color: Colors.greenAccent,
-                              fontSize: 34,
+                              fontSize: 26,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
                           const SizedBox(height: 6),
-                          const Text(
-                            "Achievable by shifting identified high-usage periods to off-peak hours",
-                            style: TextStyle(color: Colors.orangeAccent, fontSize: 13),
+                          Text(
+                            projectedEnd > 96.0
+                                ? "Projected month-end: ${projectedEnd.toStringAsFixed(1)} Units (exceeds allocation by ${(projectedEnd - 96.0).toStringAsFixed(1)} Units)"
+                                : "Projected month-end: ${projectedEnd.toStringAsFixed(1)} Units (within free 96-unit allocation)",
+                            style: TextStyle(
+                              color: projectedEnd > 96.0 ? Colors.orangeAccent : Colors.white70,
+                              fontSize: 13,
+                            ),
                           ),
                           const SizedBox(height: 22),
 
-                          // Efficiency Bar
+                          // Quota Progress Bar
                           ClipRRect(
                             borderRadius: BorderRadius.circular(20),
                             child: LinearProgressIndicator(
-                              value: (optEfficiency / 100.0).clamp(0.0, 1.0),
+                              value: (mtd / 96.0).clamp(0.0, 1.0),
                               minHeight: 12,
                               backgroundColor: Colors.white12,
-                              valueColor: const AlwaysStoppedAnimation(Colors.greenAccent),
+                              valueColor: AlwaysStoppedAnimation(
+                                (mtd / 96.0) >= 0.85 ? Colors.redAccent : Colors.greenAccent,
+                              ),
                             ),
                           ),
                           const SizedBox(height: 10),
                           Text(
-                            "${optEfficiency.toStringAsFixed(0)}% Optimization Efficiency Score",
+                            "${remaining.toStringAsFixed(2)} Units remaining this billing period",
                             style: const TextStyle(color: Colors.white54, fontSize: 13),
                           ),
                         ],

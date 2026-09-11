@@ -155,10 +155,10 @@ class EnergyService {
       );
     }
 
-    final now = DateTime.now();
-    final startOfMonth = DateTime(now.year, now.month, 1);
-    final startOfToday = DateTime(now.year, now.month, now.day);
-    final startOfWeek = now.subtract(Duration(days: now.weekday - 1));
+    final refTime = latest.timestamp;
+    final startOfMonth = DateTime(refTime.year, refTime.month, 1);
+    final startOfToday = DateTime(refTime.year, refTime.month, refTime.day);
+    final startOfWeek = refTime.subtract(Duration(days: refTime.weekday - 1));
 
     final mList = history.where((r) => r.timestamp.isAfter(startOfMonth) || r.timestamp.isAtSameMomentAs(startOfMonth)).toList();
     final tList = history.where((r) => r.timestamp.isAfter(startOfToday) || r.timestamp.isAtSameMomentAs(startOfToday)).toList();
@@ -168,8 +168,8 @@ class EnergyService {
     final double todayUnits = _computeDeltaSafe(tList, latest.totalEnergy);
     final double weekUnits = _computeDeltaSafe(wList, latest.totalEnergy);
 
-    final int daysElapsed = now.day > 0 ? now.day : 1;
-    final int daysInMonth = DateTime(now.year, now.month + 1, 0).day;
+    final int daysElapsed = refTime.day > 0 ? refTime.day : 1;
+    final int daysInMonth = DateTime(refTime.year, refTime.month + 1, 0).day;
 
     final double avgDaily = monthToDate / daysElapsed;
     final double projectedEnd = avgDaily * daysInMonth;
