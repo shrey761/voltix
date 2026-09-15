@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-
 import 'home_screens.dart';
 import 'analytics_screen.dart';
 import 'prediction_screen.dart';
@@ -13,58 +12,64 @@ class NavigationScreen extends StatefulWidget {
 }
 
 class _NavigationScreenState extends State<NavigationScreen> {
-
   int currentIndex = 0;
 
-  final screens = [
-    const HomeScreen(),
-    const AnalyticsScreen(),
-    const PredictionScreen(),
-    const SettingsScreen(),
+  final screens = const [
+    HomeScreen(),
+    AnalyticsScreen(),
+    PredictionScreen(),
+    SettingsScreen(),
   ];
 
   @override
   Widget build(BuildContext context) {
-
     return Scaffold(
-
+      backgroundColor: Colors.black,
       body: screens[currentIndex],
-
-      bottomNavigationBar: BottomNavigationBar(
-
-        currentIndex: currentIndex,
-
-        onTap: (index) {
-          setState(() {
-            currentIndex = index;
-          });
-        },
-
-        selectedItemColor: Colors.blue,
-
-        items: const [
-
-          BottomNavigationBarItem(
-            icon: Icon(Icons.home),
-            label: "Home",
+      bottomNavigationBar: Container(
+        decoration: const BoxDecoration(
+          border: Border(
+            top: BorderSide(color: Colors.white12, width: 0.5),
           ),
-
-          BottomNavigationBarItem(
-            icon: Icon(Icons.bar_chart),
-            label: "Analytics",
-          ),
-
-          BottomNavigationBarItem(
-            icon: Icon(Icons.trending_up),
-            label: "Prediction",
-          ),
-
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings),
-            label: "Settings",
-          ),
-        ],
+        ),
+        child: BottomNavigationBar(
+          backgroundColor: const Color(0xFF1C1C1E),
+          currentIndex: currentIndex,
+          onTap: (index) {
+            setState(() {
+              currentIndex = index;
+            });
+          },
+          selectedItemColor: Colors.orange,
+          unselectedItemColor: Colors.white54,
+          type: BottomNavigationBarType.fixed,
+          selectedFontSize: 11,
+          unselectedFontSize: 11,
+          elevation: 10,
+          items: const [
+            BottomNavigationBarItem(
+              icon: Icon(Icons.home_outlined),
+              activeIcon: Icon(Icons.home),
+              label: "Home",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.insights_outlined),
+              activeIcon: Icon(Icons.insights),
+              label: "Analytics",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.psychology_outlined),
+              activeIcon: Icon(Icons.psychology),
+              label: "Prediction",
+            ),
+            BottomNavigationBarItem(
+              icon: Icon(Icons.settings_outlined),
+              activeIcon: Icon(Icons.settings),
+              label: "Settings",
+            ),
+          ],
+        ),
       ),
     );
   }
-}
+}

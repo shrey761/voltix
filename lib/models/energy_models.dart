@@ -431,3 +431,187 @@ class EnergyNotification {
     );
   }
 }
+
+// =========================================================================
+// 7. REAL-TIME ENERGY & COST METRICS MODEL
+// =========================================================================
+class RealEnergyMetrics {
+  final double currentPower;          // Instantaneous Power (W)
+  final bool isDeviceOn;               // True if currentPower >= 1.0 W
+  final String statusText;             // "● ON" or "OFF"
+  final double todayEnergyKWh;         // Accumulated Energy Today (kWh)
+  final double thisMonthEnergyKWh;     // Accumulated Energy This Month (kWh)
+  final double tariffRate;             // Configurable Tariff (Rs/kWh)
+  final double estimatedBill;          // Estimated Electricity Bill (Rs)
+  final int totalReadingsCount;        // Total historical records loaded
+  final int todayReadingsCount;        // Records for today
+  final int monthReadingsCount;        // Records for this month
+  final DateTime lastUpdated;          // Timestamp of latest reading
+  final List<EnergyReading> recentHistory; // Filtered chronological readings
+
+  RealEnergyMetrics({
+    required this.currentPower,
+    required this.isDeviceOn,
+    required this.statusText,
+    required this.todayEnergyKWh,
+    required this.thisMonthEnergyKWh,
+    required this.tariffRate,
+    required this.estimatedBill,
+    required this.totalReadingsCount,
+    required this.todayReadingsCount,
+    required this.monthReadingsCount,
+    required this.lastUpdated,
+    required this.recentHistory,
+  });
+
+  factory RealEnergyMetrics.empty({double tariffRate = 7.00}) {
+    return RealEnergyMetrics(
+      currentPower: 0.0,
+      isDeviceOn: false,
+      statusText: "OFF",
+      todayEnergyKWh: 0.0,
+      thisMonthEnergyKWh: 0.0,
+      tariffRate: tariffRate,
+      estimatedBill: 0.0,
+      totalReadingsCount: 0,
+      todayReadingsCount: 0,
+      monthReadingsCount: 0,
+      lastUpdated: DateTime.now(),
+      recentHistory: const [],
+    );
+  }
+}
+
+// =========================================================================
+// 8. ACCURATE TIMESTAMP-BASED ENERGY CALCULATOR
+// =========================================================================
+class EnergyCalculator {
+  /// Integrates power over time to calculate physical energy consumption in kWh:
+  /// Energy (Wh) = sum [ (Power_{i-1} + Power_i) / 2 * Delta_t_hours ]
+  /// Energy (kWh) = Energy (Wh) / 1000.0
+  /// Also accounts for hardware meter totalEnergy deltas with rollover safety.
+  static double computeEnergyKWh(List<EnergyReading> readings) {
+    if (readings.isEmpty) return 0.0;
+
+    // Deduplicate and ensure strict chronological order
+    final sorted = List<EnergyReading>.from(readings)
+      ..sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+    final cleanList = <EnergyReading>[];
+    DateTime? prevTime;
+    for (final r in sorted) {
+      if (prevTime == null || r.timestamp.isAfter(prevTime)) {
+        cleanList.add(r);
+        prevTime = r.timestamp;
+      }
+    }
+
+    if (cleanList.isEmpty) return 0.0;
+    if (cleanList.length == 1) {
+      // Single point in time: instantaneous power has 0 elapsed time
+      return 0.0;
+    }
+
+    double totalIntegratedWh = 0.0;
+    double hwMeterDeltaKWh = 0.0;
+    bool hasValidHwEnergy = false;
+
+    for (int i = 1; i < cleanList.length; i++) {
+      final prev = cleanList[i - 1];
+      final curr = cleanList[i];
+
+      final deltaSeconds = curr.timestamp.difference(prev.timestamp).inSeconds;
+      if (deltaSeconds <= 0) continue;
+
+      // Integrate power across valid time interval (up to 24-hour window)
+      final effectiveHours = (deltaSeconds <= 86400) ? (deltaSeconds / 3600.0) : (11.0 / 3600.0);
+      final avgPowerW = (prev.totalPower + curr.totalPower) / 2.0;
+
+      if (avgPowerW > 0.0) {
+        totalIntegratedWh += avgPowerW * effectiveHours;
+      }
+
+      // Check hardware meter delta
+      if (prev.totalEnergy > 0.0 || curr.totalEnergy > 0.0) {
+        hasValidHwEnergy = true;
+        final hwDiff = curr.totalEnergy - prev.totalEnergy;
+        if (hwDiff >= 0.0) {
+          hwMeterDeltaKWh += hwDiff;
+        } else {
+          // Hardware meter rollover detected
+          hwMeterDeltaKWh += curr.totalEnergy;
+        }
+      }
+    }
+
+    final integratedKWh = totalIntegratedWh / 1000.0;
+    if (hasValidHwEnergy && hwMeterDeltaKWh > 0.0) {
+      // Return whichever is non-zero / consistent
+      return (hwMeterDeltaKWh >= integratedKWh * 0.5) ? hwMeterDeltaKWh : integratedKWh;
+    }
+    return integratedKWh;
+  }
+
+  /// Calculates complete real-time energy metrics from live & historical telemetry
+  static RealEnergyMetrics calculateMetrics({
+    required EnergyReading? latest,
+    required List<EnergyReading> history,
+    double tariffRate = 7.00,
+  }) {
+    if (latest == null && history.isEmpty) {
+      return RealEnergyMetrics.empty(tariffRate: tariffRate);
+    }
+
+    // Combine history with latest reading if not already included
+    final allReadings = List<EnergyReading>.from(history);
+    if (latest != null && !allReadings.any((r) => r.key == latest.key || r.timestamp == latest.timestamp)) {
+      allReadings.add(latest);
+    }
+
+    allReadings.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+    final effectiveLatest = latest ?? (allReadings.isNotEmpty ? allReadings.last : null);
+    final double currentPower = (effectiveLatest?.totalPower ?? 0.0).clamp(0.0, double.infinity);
+    final bool isDeviceOn = currentPower >= 1.0;
+    final String statusText = isDeviceOn ? "● ON" : "OFF";
+    final DateTime refTime = effectiveLatest?.timestamp ?? DateTime.now();
+
+    // Define time windows for today and this month
+    final startOfToday = DateTime(refTime.year, refTime.month, refTime.day);
+    final startOfMonth = DateTime(refTime.year, refTime.month, 1);
+
+    final todayList = allReadings.where((r) => r.timestamp.isAfter(startOfToday) || r.timestamp.isAtSameMomentAs(startOfToday)).toList();
+    final monthList = allReadings.where((r) => r.timestamp.isAfter(startOfMonth) || r.timestamp.isAtSameMomentAs(startOfMonth)).toList();
+
+    double todayKWh = computeEnergyKWh(todayList);
+    double monthKWh = computeEnergyKWh(monthList);
+
+    // If all historical data belongs to a single recording session and startOfMonth filter returned 0,
+    // compute the total session energy as the valid available energy
+    if (monthKWh == 0.0 && allReadings.length >= 2) {
+      monthKWh = computeEnergyKWh(allReadings);
+    }
+    if (todayKWh == 0.0 && monthKWh > 0.0) {
+      // If dataset is from a single continuous day
+      todayKWh = monthKWh;
+    }
+
+    final double estimatedBill = monthKWh * tariffRate;
+
+    return RealEnergyMetrics(
+      currentPower: currentPower,
+      isDeviceOn: isDeviceOn,
+      statusText: statusText,
+      todayEnergyKWh: todayKWh,
+      thisMonthEnergyKWh: monthKWh,
+      tariffRate: tariffRate,
+      estimatedBill: estimatedBill,
+      totalReadingsCount: allReadings.length,
+      todayReadingsCount: todayList.length,
+      monthReadingsCount: monthList.length,
+      lastUpdated: refTime,
+      recentHistory: allReadings.length > 50 ? allReadings.sublist(allReadings.length - 50) : allReadings,
+    );
+  }
+}
+

@@ -34,9 +34,9 @@ class AnalyticsScreen extends StatelessWidget {
               double weeklyTotal = analytics?.weeklyTotalUnits ?? 0.0;
               if (weeklyTotal == 0.0 && readings.isNotEmpty) {
                 final startOfWeek = DateTime.now().subtract(Duration(days: DateTime.now().weekday - 1));
-                final wReadings = readings.where((r) => r.timestamp.isAfter(startOfWeek)).toList();
+                final wReadings = readings.where((r) => r.timestamp.isAfter(startOfWeek) || r.timestamp.isAtSameMomentAs(startOfWeek)).toList();
                 if (wReadings.isNotEmpty) {
-                  weeklyTotal = (readings.last.totalEnergy - wReadings.first.totalEnergy).clamp(0.0, double.infinity);
+                  weeklyTotal = EnergyCalculator.computeEnergyKWh(wReadings);
                 }
               }
 
@@ -253,7 +253,7 @@ class AnalyticsScreen extends StatelessWidget {
                     decoration: BoxDecoration(
                       color: val > 1200
                           ? Colors.redAccent
-                          : baseColor.withOpacity(intensity),
+                          : baseColor.withValues(alpha: intensity),
                       borderRadius: BorderRadius.circular(3),
                     ),
                   ),

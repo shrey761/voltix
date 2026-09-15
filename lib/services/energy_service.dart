@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:firebase_database/firebase_database.dart';
 import '../models/energy_models.dart';
+import 'tariff_service.dart';
 
 class EnergyService {
   static final EnergyService _instance = EnergyService._internal();
@@ -16,6 +17,8 @@ class EnergyService {
   static final DatabaseReference optimizationRef = _rootRef.child('optimization').child('latest');
   static final DatabaseReference notificationsRef = _rootRef.child('notifications').child('latest');
   static final DatabaseReference alertsRef = _rootRef.child('alerts').child('latest');
+
+  final TariffService tariffService = TariffService();
 
   // =========================================================================
   // STREAMS
@@ -35,9 +38,9 @@ class EnergyService {
     });
   }
 
-  /// Stream of recent historical readings for chart & delta calculations
+  /// Stream of recent historical readings for chart & energy accumulation (up to 1000 records)
   Stream<List<EnergyReading>> get recentReadingsStream {
-    return readingsRef.orderByKey().limitToLast(100).onValue.map((event) {
+    return readingsRef.orderByKey().limitToLast(1000).onValue.map((event) {
       final raw = event.snapshot.value;
       if (raw is! Map) return [];
       final map = Map<dynamic, dynamic>.from(raw);
@@ -49,6 +52,18 @@ class EnergyService {
       });
       list.sort((a, b) => a.timestamp.compareTo(b.timestamp));
       return list;
+    });
+  }
+
+  /// Combined stream calculating RealEnergyMetrics dynamically from live telemetry
+  Stream<RealEnergyMetrics> get realMetricsStream {
+    return recentReadingsStream.map((history) {
+      final latest = history.isNotEmpty ? history.last : null;
+      return EnergyCalculator.calculateMetrics(
+        latest: latest,
+        history: history,
+        tariffRate: tariffService.tariffRate,
+      );
     });
   }
 
@@ -113,33 +128,13 @@ class EnergyService {
   // DETERMINISTIC CLIENT-SIDE COMPUTATION FALLBACKS
   // =========================================================================
 
-  static double _computeDeltaSafe(List<EnergyReading> list, double latestVal) {
-    if (list.isEmpty) return latestVal.clamp(0.0, double.infinity);
-    double total = 0.0;
-    for (int i = 1; i < list.length; i++) {
-      final diff = list[i].totalEnergy - list[i - 1].totalEnergy;
-      if (diff >= 0) {
-        total += diff;
-      } else {
-        total += list[i].totalEnergy; // Rollover detected
-      }
-    }
-    final lastDiff = latestVal - list.last.totalEnergy;
-    if (lastDiff >= 0) {
-      total += lastDiff;
-    } else {
-      total += latestVal;
-    }
-    return total.clamp(0.0, double.infinity);
-  }
-
-  /// Computes monthly forecast from readings list if backend bridge is offline
+  /// Computes monthly forecast from readings list using EnergyCalculator
   static MonthlyForecast computeForecastFromReadings(
     EnergyReading? latest,
-    List<EnergyReading> history,
-  ) {
-    const double allocated = 96.0;
-    if (latest == null) {
+    List<EnergyReading> history, {
+    double allocated = 96.0,
+  }) {
+    if (latest == null && history.isEmpty) {
       return MonthlyForecast(
         monthToDateUnits: 0.0,
         todayUnits: 0.0,
@@ -155,18 +150,34 @@ class EnergyService {
       );
     }
 
-    final refTime = latest.timestamp;
+    final refTime = latest?.timestamp ?? (history.isNotEmpty ? history.last.timestamp : DateTime.now());
     final startOfMonth = DateTime(refTime.year, refTime.month, 1);
     final startOfToday = DateTime(refTime.year, refTime.month, refTime.day);
     final startOfWeek = refTime.subtract(Duration(days: refTime.weekday - 1));
 
-    final mList = history.where((r) => r.timestamp.isAfter(startOfMonth) || r.timestamp.isAtSameMomentAs(startOfMonth)).toList();
-    final tList = history.where((r) => r.timestamp.isAfter(startOfToday) || r.timestamp.isAtSameMomentAs(startOfToday)).toList();
-    final wList = history.where((r) => r.timestamp.isAfter(startOfWeek) || r.timestamp.isAtSameMomentAs(startOfWeek)).toList();
+    final allReadings = List<EnergyReading>.from(history);
+    if (latest != null && !allReadings.any((r) => r.key == latest.key)) {
+      allReadings.add(latest);
+    }
+    allReadings.sort((a, b) => a.timestamp.compareTo(b.timestamp));
 
-    final double monthToDate = _computeDeltaSafe(mList, latest.totalEnergy);
-    final double todayUnits = _computeDeltaSafe(tList, latest.totalEnergy);
-    final double weekUnits = _computeDeltaSafe(wList, latest.totalEnergy);
+    final mList = allReadings.where((r) => r.timestamp.isAfter(startOfMonth) || r.timestamp.isAtSameMomentAs(startOfMonth)).toList();
+    final tList = allReadings.where((r) => r.timestamp.isAfter(startOfToday) || r.timestamp.isAtSameMomentAs(startOfToday)).toList();
+    final wList = allReadings.where((r) => r.timestamp.isAfter(startOfWeek) || r.timestamp.isAtSameMomentAs(startOfWeek)).toList();
+
+    double monthToDate = EnergyCalculator.computeEnergyKWh(mList);
+    double todayUnits = EnergyCalculator.computeEnergyKWh(tList);
+    double weekUnits = EnergyCalculator.computeEnergyKWh(wList);
+
+    if (monthToDate == 0.0 && allReadings.length >= 2) {
+      monthToDate = EnergyCalculator.computeEnergyKWh(allReadings);
+    }
+    if (todayUnits == 0.0 && monthToDate > 0.0) {
+      todayUnits = monthToDate;
+    }
+    if (weekUnits == 0.0 && monthToDate > 0.0) {
+      weekUnits = monthToDate;
+    }
 
     final int daysElapsed = refTime.day > 0 ? refTime.day : 1;
     final int daysInMonth = DateTime(refTime.year, refTime.month + 1, 0).day;
@@ -175,7 +186,7 @@ class EnergyService {
     final double projectedEnd = avgDaily * daysInMonth;
     final double remaining = (allocated - monthToDate).clamp(0.0, allocated);
     final double projectedExcess = (projectedEnd - allocated).clamp(0.0, double.infinity);
-    final double pct = (monthToDate / allocated).clamp(0.0, 1.0);
+    final double pct = (allocated > 0) ? (monthToDate / allocated).clamp(0.0, 1.0) : 0.0;
 
     return MonthlyForecast(
       monthToDateUnits: monthToDate,
@@ -192,3 +203,4 @@ class EnergyService {
     );
   }
 }
+

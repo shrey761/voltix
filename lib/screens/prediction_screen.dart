@@ -33,6 +33,7 @@ class PredictionScreen extends StatelessWidget {
               final double p2 = reading?.power2 ?? pred?.room2.currentPower ?? 0.0;
               final double totalP = reading?.totalPower ?? (p1 + p2);
 
+              final bool hasPrediction = pred != null;
               final r1Next = pred?.room1.nextHourState ?? (p1 >= 1200 ? "HIGH USAGE" : "NORMAL");
               final r1NextConf = pred?.room1.nextHourConfidence ?? 96.0;
               final r1Tmrw = pred?.room1.tomorrowState ?? "NORMAL";
@@ -62,6 +63,35 @@ class PredictionScreen extends StatelessWidget {
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
+                    if (!hasPrediction && reading == null)
+                      Container(
+                        width: double.infinity,
+                        margin: const EdgeInsets.only(bottom: 20),
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFF1C1C1E),
+                          borderRadius: BorderRadius.circular(22),
+                          border: Border.all(color: Colors.white10),
+                        ),
+                        child: Column(
+                          children: [
+                            Icon(Icons.hourglass_empty, color: Colors.orange.withValues(alpha: 0.8), size: 36),
+                            const SizedBox(height: 12),
+                            const Text(
+                              "Prediction unavailable — collecting more data",
+                              style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                              textAlign: TextAlign.center,
+                            ),
+                            const SizedBox(height: 6),
+                            Text(
+                              "Not enough historical telemetry for AI prediction yet. Real-time inference will populate once data arrives.",
+                              style: TextStyle(color: Colors.white.withValues(alpha: 0.5), fontSize: 13),
+                              textAlign: TextAlign.center,
+                            ),
+                          ],
+                        ),
+                      ),
+
                     // ==================================================
                     // TOTAL PREDICTION OVERVIEW CARD
                     // ==================================================
@@ -87,8 +117,8 @@ class PredictionScreen extends StatelessWidget {
                                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                                 decoration: BoxDecoration(
                                   color: (r1Next == "HIGH USAGE" || r2Next == "HIGH USAGE")
-                                      ? Colors.redAccent.withOpacity(0.2)
-                                      : Colors.greenAccent.withOpacity(0.15),
+                                      ? Colors.redAccent.withValues(alpha: 0.2)
+                                      : Colors.greenAccent.withValues(alpha: 0.15),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Text(
@@ -153,7 +183,7 @@ class PredictionScreen extends StatelessWidget {
                     const SizedBox(height: 20),
 
                     // ==================================================
-                    // DYNAMIC CONSUMPTION BAR CHART (ROOM 1 vs ROOM 2)
+                    // COMPARISON BAR CHART (MEASURED VS PREDICTED)
                     // ==================================================
                     Container(
                       width: double.infinity,
@@ -167,29 +197,22 @@ class PredictionScreen extends StatelessWidget {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           const Text(
-                            "Current vs Predicted Power (Watts)",
+                            "Room Measured vs Predicted Power (Watts)",
                             style: TextStyle(
                               color: Colors.white,
-                              fontSize: 18,
+                              fontSize: 16,
                               fontWeight: FontWeight.bold,
                             ),
                           ),
-                          const SizedBox(height: 20),
+                          const SizedBox(height: 24),
                           SizedBox(
-                            height: 200,
+                            height: 180,
                             child: BarChart(
                               BarChartData(
                                 alignment: BarChartAlignment.spaceAround,
-                                maxY: maxPower([p1, p2, r1PredP, r2PredP, 2000.0]),
+                                maxY: maxPower([p1, p2, r1PredP, r2PredP]),
                                 borderData: FlBorderData(show: false),
-                                gridData: FlGridData(
-                                  show: true,
-                                  drawVerticalLine: false,
-                                  horizontalInterval: 500,
-                                  getDrawingHorizontalLine: (value) {
-                                    return const FlLine(color: Colors.white10, strokeWidth: 1);
-                                  },
-                                ),
+                                gridData: const FlGridData(show: false),
                                 titlesData: FlTitlesData(
                                   leftTitles: const AxisTitles(
                                     sideTitles: SideTitles(showTitles: false),
@@ -221,9 +244,9 @@ class PredictionScreen extends StatelessWidget {
                                 ),
                                 barGroups: [
                                   makeBar(0, p1, Colors.orange),
-                                  makeBar(1, r1PredP, Colors.orangeAccent.withOpacity(0.6)),
+                                  makeBar(1, r1PredP, Colors.orangeAccent.withValues(alpha: 0.6)),
                                   makeBar(2, p2, Colors.blueAccent),
-                                  makeBar(3, r2PredP, Colors.lightBlueAccent.withOpacity(0.6)),
+                                  makeBar(3, r2PredP, Colors.lightBlueAccent.withValues(alpha: 0.6)),
                                 ],
                               ),
                             ),
@@ -354,7 +377,7 @@ class PredictionScreen extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                         decoration: BoxDecoration(
-                          color: isNextHigh ? Colors.redAccent.withOpacity(0.2) : Colors.greenAccent.withOpacity(0.15),
+                          color: isNextHigh ? Colors.redAccent.withValues(alpha: 0.2) : Colors.greenAccent.withValues(alpha: 0.15),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Text(
@@ -397,7 +420,7 @@ class PredictionScreen extends StatelessWidget {
                   Container(
                     padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
                     decoration: BoxDecoration(
-                      color: isTmrwHigh ? Colors.orangeAccent.withOpacity(0.2) : Colors.greenAccent.withOpacity(0.15),
+                      color: isTmrwHigh ? Colors.orangeAccent.withValues(alpha: 0.2) : Colors.greenAccent.withValues(alpha: 0.15),
                       borderRadius: BorderRadius.circular(8),
                     ),
                     child: Text(
