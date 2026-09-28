@@ -486,10 +486,14 @@ class RealEnergyMetrics {
 // 8. ACCURATE TIMESTAMP-BASED ENERGY CALCULATOR
 // =========================================================================
 class EnergyCalculator {
-  /// Integrates power over time to calculate physical energy consumption in kWh:
-  /// Energy (Wh) = sum [ (Power_{i-1} + Power_i) / 2 * Delta_t_hours ]
-  /// Energy (kWh) = Energy (Wh) / 1000.0
-  /// Also accounts for hardware meter totalEnergy deltas with rollover safety.
+  /// Computes accumulated physical electrical energy consumption in kWh across a list of readings.
+  /// 
+  /// PRIMARY / AUTHORITATIVE SOURCE: ESP32 Cumulative Meter (totalEnergy in kWh)
+  /// Calculates reset-safe delta accumulation:
+  /// E_consumed = sum_{i=1}^n [ (E_i >= E_{i-1}) ? (E_i - E_{i-1}) : E_i ]
+  ///
+  /// FALLBACK: Trapezoidal Numerical Power Integration (sum [ (P_{i-1} + P_i) / 2 * Delta_t_hours / 1000 ])
+  /// Used only when hardware cumulative totalEnergy is unavailable (all totalEnergy == 0).
   static double computeEnergyKWh(List<EnergyReading> readings) {
     if (readings.isEmpty) return 0.0;
 
@@ -506,16 +510,31 @@ class EnergyCalculator {
       }
     }
 
-    if (cleanList.isEmpty) return 0.0;
-    if (cleanList.length == 1) {
-      // Single point in time: instantaneous power has 0 elapsed time
+    if (cleanList.length <= 1) {
+      // Single instantaneous point in time represents 0 elapsed delta
       return 0.0;
     }
 
-    double totalIntegratedWh = 0.0;
-    double hwMeterDeltaKWh = 0.0;
-    bool hasValidHwEnergy = false;
+    // 1. PRIMARY: Authoritative Hardware Cumulative Meter Delta (totalEnergy in kWh)
+    final bool hasValidHwEnergy = cleanList.any((r) => r.totalEnergy > 0.0);
+    if (hasValidHwEnergy) {
+      double hwMeterDeltaKWh = 0.0;
+      for (int i = 1; i < cleanList.length; i++) {
+        final prev = cleanList[i - 1];
+        final curr = cleanList[i];
+        final double hwDiff = curr.totalEnergy - prev.totalEnergy;
+        if (hwDiff >= 0.0) {
+          hwMeterDeltaKWh += hwDiff;
+        } else {
+          // Hardware meter reboot/rollover detected
+          hwMeterDeltaKWh += curr.totalEnergy.clamp(0.0, double.infinity);
+        }
+      }
+      return hwMeterDeltaKWh.clamp(0.0, double.infinity);
+    }
 
+    // 2. FALLBACK: Trapezoidal Numerical Power Integration (when totalEnergy is 0 across all records)
+    double totalIntegratedWh = 0.0;
     for (int i = 1; i < cleanList.length; i++) {
       final prev = cleanList[i - 1];
       final curr = cleanList[i];
@@ -530,26 +549,9 @@ class EnergyCalculator {
       if (avgPowerW > 0.0) {
         totalIntegratedWh += avgPowerW * effectiveHours;
       }
-
-      // Check hardware meter delta
-      if (prev.totalEnergy > 0.0 || curr.totalEnergy > 0.0) {
-        hasValidHwEnergy = true;
-        final hwDiff = curr.totalEnergy - prev.totalEnergy;
-        if (hwDiff >= 0.0) {
-          hwMeterDeltaKWh += hwDiff;
-        } else {
-          // Hardware meter rollover detected
-          hwMeterDeltaKWh += curr.totalEnergy;
-        }
-      }
     }
 
-    final integratedKWh = totalIntegratedWh / 1000.0;
-    if (hasValidHwEnergy && hwMeterDeltaKWh > 0.0) {
-      // Return whichever is non-zero / consistent
-      return (hwMeterDeltaKWh >= integratedKWh * 0.5) ? hwMeterDeltaKWh : integratedKWh;
-    }
-    return integratedKWh;
+    return (totalIntegratedWh / 1000.0).clamp(0.0, double.infinity);
   }
 
   /// Calculates complete real-time energy metrics from live & historical telemetry

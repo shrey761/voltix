@@ -238,7 +238,57 @@ void main() {
       expect(metrics.todayEnergyKWh, greaterThanOrEqualTo(0.008));
     });
 
-    test('TEST 6 & 7: Tariff Billing calculation from real kWh', () {
+    test('TEST 6: Authoritative ESP32 totalEnergy delta calculation (0.10 kWh => Rs 0.70)', () {
+      final t1 = DateTime(2026, 9, 12, 10, 0, 0);
+      final t2 = DateTime(2026, 9, 12, 10, 10, 0);
+
+      final r1 = EnergyReading(
+        key: 'r1', timestamp: t1, voltage1: 230, voltage2: 230,
+        current1: 2.6, current2: 0, power1: 600.0, power2: 0.0,
+        energy1: 0.0, energy2: 0.0, totalCurrent: 2.6, totalPower: 600.0, totalEnergy: 0.0,
+      );
+      final r2 = EnergyReading(
+        key: 'r2', timestamp: t2, voltage1: 230, voltage2: 230,
+        current1: 2.6, current2: 0, power1: 600.0, power2: 0.0,
+        energy1: 0.10, energy2: 0.0, totalCurrent: 2.6, totalPower: 600.0, totalEnergy: 0.10,
+      );
+
+      final metrics = EnergyCalculator.calculateMetrics(
+        latest: r2,
+        history: [r1, r2],
+        tariffRate: 7.00,
+      );
+
+      expect(metrics.todayEnergyKWh, closeTo(0.10, 0.0001));
+      expect(metrics.thisMonthEnergyKWh, closeTo(0.10, 0.0001));
+      expect(metrics.estimatedBill, closeTo(0.70, 0.0001)); // 0.10 kWh * Rs 7.00 = Rs 0.70
+    });
+
+    test('TEST 7: Reset / ESP32 Reboot Resilience in totalEnergy delta accumulation', () {
+      final t1 = DateTime(2026, 9, 12, 10, 0, 0);
+      final t2 = DateTime(2026, 9, 12, 10, 10, 0);
+      final t3 = DateTime(2026, 9, 12, 10, 20, 0); // ESP32 reboots, counter resets to 0.5 kWh
+      final t4 = DateTime(2026, 9, 12, 10, 30, 0);
+
+      final history = [
+        EnergyReading(key: 'r1', timestamp: t1, voltage1: 230, voltage2: 230, current1: 1, current2: 0, power1: 230, power2: 0, energy1: 5, energy2: 5, totalCurrent: 1, totalPower: 230, totalEnergy: 10.0),
+        EnergyReading(key: 'r2', timestamp: t2, voltage1: 230, voltage2: 230, current1: 1, current2: 0, power1: 230, power2: 0, energy1: 6, energy2: 6, totalCurrent: 1, totalPower: 230, totalEnergy: 12.0), // Delta = 2.0
+        EnergyReading(key: 'r3', timestamp: t3, voltage1: 230, voltage2: 230, current1: 1, current2: 0, power1: 230, power2: 0, energy1: 0.25, energy2: 0.25, totalCurrent: 1, totalPower: 230, totalEnergy: 0.5), // Reboot -> Delta = 0.5
+        EnergyReading(key: 'r4', timestamp: t4, voltage1: 230, voltage2: 230, current1: 1, current2: 0, power1: 230, power2: 0, energy1: 1.0, energy2: 1.0, totalCurrent: 1, totalPower: 230, totalEnergy: 2.0), // Delta = 1.5
+      ];
+
+      final metrics = EnergyCalculator.calculateMetrics(
+        latest: history.last,
+        history: history,
+        tariffRate: 7.00,
+      );
+
+      // Total expected energy = 2.0 + 0.5 + 1.5 = 4.0 kWh
+      expect(metrics.todayEnergyKWh, closeTo(4.0, 0.0001));
+      expect(metrics.estimatedBill, closeTo(28.00, 0.0001)); // 4.0 kWh * Rs 7.00 = Rs 28.00
+    });
+
+    test('TEST 8: Tariff Billing calculation from real kWh', () {
       final tariffService = TariffService();
       tariffService.tariffRate = 7.50; // Rs 7.50 per kWh
 
