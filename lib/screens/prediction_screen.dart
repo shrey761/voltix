@@ -34,13 +34,13 @@ class PredictionScreen extends StatelessWidget {
               final double totalP = reading?.totalPower ?? (p1 + p2);
 
               final bool hasPrediction = pred != null;
-              final r1Next = pred?.room1.nextHourState ?? (p1 >= 1200 ? "HIGH USAGE" : "NORMAL");
+              final r1Next = pred?.room1.nextHourState ?? (p1 >= 40.0 ? "HIGH USAGE" : "NORMAL");
               final r1NextConf = pred?.room1.nextHourConfidence ?? 96.0;
               final r1Tmrw = pred?.room1.tomorrowState ?? "NORMAL";
               final r1TmrwConf = pred?.room1.tomorrowConfidence ?? 92.0;
               final r1PredP = pred?.room1.predictedPower ?? p1;
 
-              final r2Next = pred?.room2.nextHourState ?? (p2 >= 1200 ? "HIGH USAGE" : "NORMAL");
+              final r2Next = pred?.room2.nextHourState ?? (p2 >= 10.0 ? "HIGH USAGE" : "NORMAL");
               final r2NextConf = pred?.room2.nextHourConfidence ?? 98.0;
               final r2Tmrw = pred?.room2.tomorrowState ?? "NORMAL";
               final r2TmrwConf = pred?.room2.tomorrowConfidence ?? 90.0;
