@@ -24,35 +24,29 @@ class EnergyService {
   // STREAMS
   // =========================================================================
 
-  /// Stream of the single latest EnergyReading from Firebase
-  Stream<EnergyReading?> get latestReadingStream {
-    return readingsRef.orderByKey().limitToLast(1).onValue.map((event) {
-      final raw = event.snapshot.value;
-      if (raw is! Map) return null;
-      final map = Map<dynamic, dynamic>.from(raw);
-      if (map.isEmpty) return null;
-      final firstKey = map.keys.first.toString();
-      final readingRaw = map[firstKey];
-      if (readingRaw is! Map) return null;
-      return EnergyReading.fromMap(firstKey, Map<dynamic, dynamic>.from(readingRaw));
-    });
-  }
-
-  /// Stream of recent historical readings for chart & energy accumulation (up to 1000 records)
+  /// Stream of recent historical readings for chart & energy accumulation (strictly chronological)
   Stream<List<EnergyReading>> get recentReadingsStream {
-    return readingsRef.orderByKey().limitToLast(1000).onValue.map((event) {
+    return readingsRef.onValue.map((event) {
       final raw = event.snapshot.value;
       if (raw is! Map) return [];
       final map = Map<dynamic, dynamic>.from(raw);
       final List<EnergyReading> list = [];
       map.forEach((k, v) {
         if (v is Map) {
-          list.add(EnergyReading.fromMap(k.toString(), Map<dynamic, dynamic>.from(v)));
+          final reading = EnergyReading.fromMap(k.toString(), Map<dynamic, dynamic>.from(v));
+          if (reading.isValidTimestamp) {
+            list.add(reading);
+          }
         }
       });
       list.sort((a, b) => a.timestamp.compareTo(b.timestamp));
       return list;
     });
+  }
+
+  /// Stream of the single latest EnergyReading from Firebase (strictly chronological)
+  Stream<EnergyReading?> get latestReadingStream {
+    return recentReadingsStream.map((list) => list.isNotEmpty ? list.last : null);
   }
 
   /// Combined stream calculating RealEnergyMetrics dynamically from live telemetry
@@ -62,6 +56,16 @@ class EnergyService {
       return EnergyCalculator.calculateMetrics(
         latest: latest,
         history: history,
+        tariffRate: tariffService.tariffRate,
+      );
+    });
+  }
+
+  /// Stream of historical daily room-wise energy records grouped by calendar date
+  Stream<List<DailyRoomEnergy>> get historicalDailyStream {
+    return recentReadingsStream.map((history) {
+      return EnergyCalculator.computeDailyRoomBreakdown(
+        history,
         tariffRate: tariffService.tariffRate,
       );
     });

@@ -30,6 +30,40 @@ void main() {
       expect(reading.power2, 1656.72);
       expect(reading.totalPower, 2684.97);
       expect(reading.totalEnergy, 13.555);
+      expect(reading.isValidTimestamp, true);
+    });
+
+    test('EnergyReading handles TIME_ERROR safely without corrupting timestamp', () {
+      final map = {
+        'timestamp': 'TIME_ERROR',
+        'voltage1': 230.0,
+        'power1': 0.0,
+      };
+
+      final reading = EnergyReading.fromMap('reading_err', map);
+      expect(reading.isValidTimestamp, false);
+      expect(reading.timestamp, DateTime.fromMillisecondsSinceEpoch(0));
+    });
+
+    test('Energy readings sort chronologically by timestamp, ignoring lexicographical key order', () {
+      final oldReading = EnergyReading.fromMap('reading_995565', {
+        'timestamp': '2026-10-04 16:14:59',
+        'power1': 100.0,
+        'power2': 50.0,
+      });
+
+      final todayReading = EnergyReading.fromMap('reading_1509990', {
+        'timestamp': '2026-10-06 14:40:04',
+        'power1': 0.0,
+        'power2': 21.0,
+      });
+
+      final list = [oldReading, todayReading];
+      list.sort((a, b) => a.timestamp.compareTo(b.timestamp));
+
+      // Latest reading must be today's reading (2026-10-06), not the lexicographically larger key
+      expect(list.last.key, 'reading_1509990');
+      expect(list.last.timestamp, DateTime(2026, 10, 6, 14, 40, 4));
     });
 
     test('PredictionResult correctly parses multi-horizon ML predictions', () {
@@ -245,6 +279,129 @@ void main() {
       expect(tariffService.calculateBill(0.0), 0.0);
       expect(tariffService.calculateBill(10.0), 75.0);
       expect(tariffService.calculateBill(12.64), closeTo(94.80, 0.01));
+    });
+
+    test('TEST 8: 5W ON/OFF Threshold does NOT alter raw power value (2W -> 2.0W OFF, 20W -> 20.0W ON)', () {
+      final rLow = EnergyReading.fromMap('r_low', {
+        'timestamp': '2026-10-06 10:00:00',
+        'totalPower': 2.0,
+      });
+
+      final metricsLow = EnergyCalculator.calculateMetrics(
+        latest: rLow,
+        history: [rLow],
+        tariffRate: 7.00,
+      );
+
+      // Power must remain exact 2.0W, status must be OFF (2W <= 5W)
+      expect(metricsLow.currentPower, 2.0);
+      expect(metricsLow.isDeviceOn, false);
+      expect(metricsLow.statusText, "OFF");
+
+      final rHigh = EnergyReading.fromMap('r_high', {
+        'timestamp': '2026-10-06 10:01:00',
+        'totalPower': 20.0,
+      });
+
+      final metricsHigh = EnergyCalculator.calculateMetrics(
+        latest: rHigh,
+        history: [rLow, rHigh],
+        tariffRate: 7.00,
+      );
+
+      // Power must remain exact 20.0W, status must be ON (20W > 5W)
+      expect(metricsHigh.currentPower, 20.0);
+      expect(metricsHigh.isDeviceOn, true);
+      expect(metricsHigh.statusText, "● ON");
+    });
+
+    test('TEST 9: Today Energy calculates cumulative difference (latestTotalEnergy - firstTotalEnergyOfToday) and estimatedBill = todayEnergy * tariff', () {
+      final r1 = EnergyReading.fromMap('r1', {
+        'timestamp': '2026-10-06 08:00:00',
+        'totalPower': 20.0,
+        'totalEnergy': 0.0100,
+      });
+      final r2 = EnergyReading.fromMap('r2', {
+        'timestamp': '2026-10-06 12:00:00',
+        'totalPower': 20.0,
+        'totalEnergy': 0.0150,
+      });
+      final r3 = EnergyReading.fromMap('r3', {
+        'timestamp': '2026-10-06 16:00:00',
+        'totalPower': 20.0,
+        'totalEnergy': 0.0225,
+      });
+
+      final metrics = EnergyCalculator.calculateMetrics(
+        latest: r3,
+        history: [r1, r2, r3],
+        tariffRate: 7.00,
+      );
+
+      // Cumulative difference: 0.0225 - 0.0100 = 0.0125 kWh (NOT the sum 0.01 + 0.015 + 0.0225 = 0.0475)
+      expect(metrics.todayEnergyKWh, closeTo(0.0125, 0.0001));
+      // Estimated bill: 0.0125 * 7.00 = 0.0875
+      expect(metrics.estimatedBill, closeTo(0.0875, 0.0001));
+    });
+
+    test('TEST 10: Historical daily + room-wise energy preservation across multiple days (Tuesday + Wednesday)', () {
+      // Tuesday readings (2026-10-06)
+      final tue1 = EnergyReading.fromMap('tue_1', {
+        'timestamp': '2026-10-06 08:00:00',
+        'energy1': 0.10,
+        'energy2': 0.05,
+        'totalEnergy': 0.15,
+        'power1': 100.0,
+        'power2': 50.0,
+      });
+      final tue2 = EnergyReading.fromMap('tue_2', {
+        'timestamp': '2026-10-06 20:00:00',
+        'energy1': 0.22, // delta = 0.12 kWh
+        'energy2': 0.13, // delta = 0.08 kWh
+        'totalEnergy': 0.35, // delta = 0.20 kWh
+        'power1': 100.0,
+        'power2': 50.0,
+      });
+
+      // Wednesday readings (2026-10-07)
+      final wed1 = EnergyReading.fromMap('wed_1', {
+        'timestamp': '2026-10-07 08:00:00',
+        'energy1': 0.22,
+        'energy2': 0.13,
+        'totalEnergy': 0.35,
+        'power1': 50.0,
+        'power2': 150.0,
+      });
+      final wed2 = EnergyReading.fromMap('wed_2', {
+        'timestamp': '2026-10-07 20:00:00',
+        'energy1': 0.27, // delta = 0.05 kWh
+        'energy2': 0.28, // delta = 0.15 kWh
+        'totalEnergy': 0.55, // delta = 0.20 kWh
+        'power1': 50.0,
+        'power2': 150.0,
+      });
+
+      final fullHistory = [tue1, tue2, wed1, wed2];
+      final breakdown = EnergyCalculator.computeDailyRoomBreakdown(fullHistory, tariffRate: 7.00);
+
+      // Verify both days are preserved
+      expect(breakdown.length, 2);
+
+      // Tuesday verification
+      final tueData = breakdown.firstWhere((d) => d.date == '2026-10-06');
+      expect(tueData.dayName, 'Tue');
+      expect(tueData.room1EnergyKWh, closeTo(0.12, 0.0001));
+      expect(tueData.room2EnergyKWh, closeTo(0.08, 0.0001));
+      expect(tueData.totalEnergyKWh, closeTo(0.20, 0.0001));
+      expect(tueData.estimatedBill, closeTo(1.40, 0.0001));
+
+      // Wednesday verification
+      final wedData = breakdown.firstWhere((d) => d.date == '2026-10-07');
+      expect(wedData.dayName, 'Wed');
+      expect(wedData.room1EnergyKWh, closeTo(0.05, 0.0001));
+      expect(wedData.room2EnergyKWh, closeTo(0.15, 0.0001));
+      expect(wedData.totalEnergyKWh, closeTo(0.20, 0.0001));
+      expect(wedData.estimatedBill, closeTo(1.40, 0.0001));
     });
   });
 
