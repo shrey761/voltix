@@ -453,7 +453,7 @@ class PredictionScreen extends StatelessWidget {
   }
 
   static double maxPower(List<double> values) {
-    double m = 1000.0;
+    double m = 100.0;
     for (var v in values) {
       if (v > m) m = v;
     }

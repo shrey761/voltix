@@ -251,7 +251,7 @@ class AnalyticsScreen extends StatelessWidget {
                     margin: const EdgeInsets.symmetric(horizontal: 1),
                     height: 20,
                     decoration: BoxDecoration(
-                      color: val > 1200
+                      color: val >= 40.0
                           ? Colors.redAccent
                           : baseColor.withValues(alpha: intensity),
                       borderRadius: BorderRadius.circular(3),
