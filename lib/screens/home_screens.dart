@@ -361,7 +361,7 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  /// 2. Accumulated Energy & Cost Metrics (Today, This Month, Estimated Bill)
+  /// 2. Accumulated Energy & Cost Metrics (Today, This Month, Monthly Bill)
   static Widget _buildAccumulatedMetricsRow(RealEnergyMetrics metrics) {
     return Row(
       children: [
@@ -370,7 +370,7 @@ class HomeScreen extends StatelessWidget {
           child: _buildMetricCard(
             title: "TODAY'S ENERGY",
             value: "${metrics.todayEnergyKWh.toStringAsFixed(2)} kWh",
-            subtitle: "Since 00:00 today",
+            subtitle: "Bill: ₹${metrics.todayEstimatedBill.toStringAsFixed(2)}",
             icon: Icons.today,
             accentColor: Colors.blueAccent,
           ),
@@ -389,12 +389,12 @@ class HomeScreen extends StatelessWidget {
         ),
         const SizedBox(width: 10),
 
-        // ESTIMATED BILL
+        // MONTHLY ESTIMATED BILL
         Expanded(
           child: _buildMetricCard(
             title: "ESTIMATED BILL",
             value: "₹${metrics.estimatedBill.toStringAsFixed(2)}",
-            subtitle: "@ ₹${metrics.tariffRate.toStringAsFixed(2)}/kWh",
+            subtitle: "Monthly @ ₹${metrics.tariffRate.toStringAsFixed(2)}",
             icon: Icons.currency_rupee,
             accentColor: Colors.greenAccent,
           ),
@@ -822,8 +822,17 @@ class HomeScreen extends StatelessWidget {
   /// 6. Gruha Jyothi Quota Progress Card
   static Widget _buildQuotaCard(RealEnergyMetrics metrics, double quotaUnits) {
     final double used = metrics.thisMonthEnergyKWh;
-    final double remaining = (quotaUnits - used).clamp(0.0, quotaUnits);
-    final double progress = (quotaUnits > 0) ? (used / quotaUnits).clamp(0.0, 1.0) : 0.0;
+    final double quota = quotaUnits > 0 ? quotaUnits : 96.0;
+    final double remaining = (quota - used).clamp(0.0, quota);
+    final double overflow = (used > quota) ? (used - quota) : 0.0;
+    final double rawProgress = (quota > 0) ? (used / quota) : 0.0;
+    final double progress = rawProgress.clamp(0.0, 1.0);
+    final bool isExceeded = used > quota;
+    final bool isWarning = !isExceeded && rawProgress >= 0.85;
+
+    final Color statusColor = isExceeded
+        ? Colors.redAccent
+        : (isWarning ? Colors.orangeAccent : Colors.greenAccent);
 
     return Container(
       width: double.infinity,
@@ -831,7 +840,9 @@ class HomeScreen extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFF1C1C1E),
         borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: Colors.white10),
+        border: Border.all(
+          color: isExceeded ? Colors.redAccent.withValues(alpha: 0.4) : Colors.white10,
+        ),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -853,12 +864,24 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ],
               ),
-              Text(
-                "${(progress * 100).toStringAsFixed(1)}% used",
-                style: TextStyle(
-                  color: progress >= 0.85 ? Colors.redAccent : Colors.greenAccent,
-                  fontSize: 12,
-                  fontWeight: FontWeight.bold,
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(
+                  color: statusColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: statusColor.withValues(alpha: 0.5), width: 0.8),
+                ),
+                child: Text(
+                  isExceeded
+                      ? "LIMIT EXCEEDED"
+                      : (isWarning
+                          ? "${(rawProgress * 100).toStringAsFixed(1)}% (Near Limit)"
+                          : "${(rawProgress * 100).toStringAsFixed(1)}% used"),
+                  style: TextStyle(
+                    color: statusColor,
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                  ),
                 ),
               ),
             ],
@@ -867,12 +890,10 @@ class HomeScreen extends StatelessWidget {
           ClipRRect(
             borderRadius: BorderRadius.circular(10),
             child: LinearProgressIndicator(
-              value: progress,
+              value: isExceeded ? 1.0 : progress,
               minHeight: 8,
               backgroundColor: Colors.white12,
-              valueColor: AlwaysStoppedAnimation(
-                progress >= 0.85 ? Colors.redAccent : Colors.greenAccent,
-              ),
+              valueColor: AlwaysStoppedAnimation(statusColor),
             ),
           ),
           const SizedBox(height: 12),
@@ -880,12 +901,18 @@ class HomeScreen extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                "Allocated: ${quotaUnits.toStringAsFixed(0)} Units",
+                "Allocated: ${quota.toStringAsFixed(0)} Units",
                 style: TextStyle(color: Colors.white.withValues(alpha: 0.55), fontSize: 12),
               ),
               Text(
-                "Remaining: ${remaining.toStringAsFixed(2)} Units",
-                style: const TextStyle(color: Colors.greenAccent, fontSize: 12, fontWeight: FontWeight.w600),
+                isExceeded
+                    ? "Exceeded by ${overflow.toStringAsFixed(2)} Units"
+                    : "Remaining: ${remaining.toStringAsFixed(2)} Units",
+                style: TextStyle(
+                  color: isExceeded ? Colors.redAccent : Colors.greenAccent,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ],
           ),

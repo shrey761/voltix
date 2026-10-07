@@ -487,9 +487,12 @@ class RealEnergyMetrics {
   final bool isDeviceOn;               // True if currentPower > 5.0 W
   final String statusText;             // "● ON" or "OFF"
   final double todayEnergyKWh;         // Accumulated Energy Today (kWh)
+  final double yesterdayEnergyKWh;     // Accumulated Energy Yesterday (kWh)
+  final double thisWeekEnergyKWh;      // Accumulated Energy This Week / Last 7 Days (kWh)
   final double thisMonthEnergyKWh;     // Accumulated Energy This Month (kWh)
   final double tariffRate;             // Configurable Tariff (Rs/kWh)
-  final double estimatedBill;          // Estimated Electricity Bill (Rs)
+  final double estimatedBill;          // Estimated Monthly Electricity Bill (Rs) = thisMonthEnergyKWh * tariffRate
+  final double todayEstimatedBill;     // Estimated Today Electricity Bill (Rs) = todayEnergyKWh * tariffRate
   final int totalReadingsCount;        // Total historical records loaded
   final int todayReadingsCount;        // Records for today
   final int monthReadingsCount;        // Records for this month
@@ -502,9 +505,12 @@ class RealEnergyMetrics {
     required this.isDeviceOn,
     required this.statusText,
     required this.todayEnergyKWh,
+    this.yesterdayEnergyKWh = 0.0,
+    this.thisWeekEnergyKWh = 0.0,
     required this.thisMonthEnergyKWh,
     required this.tariffRate,
     required this.estimatedBill,
+    this.todayEstimatedBill = 0.0,
     required this.totalReadingsCount,
     required this.todayReadingsCount,
     required this.monthReadingsCount,
@@ -519,9 +525,12 @@ class RealEnergyMetrics {
       isDeviceOn: false,
       statusText: "OFF",
       todayEnergyKWh: 0.0,
+      yesterdayEnergyKWh: 0.0,
+      thisWeekEnergyKWh: 0.0,
       thisMonthEnergyKWh: 0.0,
       tariffRate: tariffRate,
       estimatedBill: 0.0,
+      todayEstimatedBill: 0.0,
       totalReadingsCount: 0,
       todayReadingsCount: 0,
       monthReadingsCount: 0,
@@ -539,10 +548,17 @@ class EnergyCalculator {
   /// Power threshold in Watts to determine ON/OFF state (avoids tiny sensor noise)
   static const double onOffPowerThreshold = 5.0;
 
+  /// Helper to format a DateTime as YYYY-MM-DD
+  static String formatDate(DateTime dt) {
+    return "${dt.year.toString().padLeft(4, '0')}-"
+        "${dt.month.toString().padLeft(2, '0')}-"
+        "${dt.day.toString().padLeft(2, '0')}";
+  }
+
   /// Computes cumulative energy in kWh:
   /// - Uses cumulative hardware energy (latestTotalEnergy - firstTotalEnergyOfToday)
   ///   with reset/reboot safety across historical records.
-  /// - Falls back to power trapezoidal integration when hardware totalEnergy is not present (e.g. simulated data).
+  /// - Falls back to power trapezoidal integration when hardware totalEnergy is not present.
   static double computeEnergyKWh(List<EnergyReading> readings) {
     if (readings.length < 2) return 0.0;
 
@@ -578,7 +594,7 @@ class EnergyCalculator {
       return totalDelta.clamp(0.0, double.infinity);
     }
 
-    // Fallback: trapezoidal power integration when hardware meter totalEnergy is 0 (e.g. simulated data)
+    // Fallback: trapezoidal power integration when hardware meter totalEnergy is 0
     double totalIntegratedWh = 0.0;
     for (int i = 1; i < cleanList.length; i++) {
       final prev = cleanList[i - 1];
@@ -597,12 +613,13 @@ class EnergyCalculator {
 
   /// Computes historical daily room-wise energy consumption by date (YYYY-MM-DD):
   /// - Groups readings by calendar date using Firebase timestamps.
+  /// - Accurately attributes incremental transitions between consecutive readings to the target date.
   /// - For each date:
-  ///     Room 1 daily kWh = latest energy1 for that day - first energy1 for that day
-  ///     Room 2 daily kWh = latest energy2 for that day - first energy2 for that day
+  ///     Room 1 daily kWh = cumulative energy delta for Room 1
+  ///     Room 2 daily kWh = cumulative energy delta for Room 2
   ///     Total daily kWh = Room 1 daily kWh + Room 2 daily kWh
   ///     Daily bill = Total daily kWh * tariff rate
-  /// - Preserves historical dates (does not overwrite past days when a new day begins).
+  /// - Preserves historical dates without overwriting past days.
   static List<DailyRoomEnergy> computeDailyRoomBreakdown(
     List<EnergyReading> readings, {
     double tariffRate = 7.00,
@@ -614,88 +631,106 @@ class EnergyCalculator {
 
     if (valid.isEmpty) return [];
 
-    // Group readings by calendar date string (YYYY-MM-DD)
-    final Map<String, List<EnergyReading>> grouped = {};
-    for (final r in valid) {
-      final dStr = "${r.timestamp.year.toString().padLeft(4, '0')}-"
-          "${r.timestamp.month.toString().padLeft(2, '0')}-"
-          "${r.timestamp.day.toString().padLeft(2, '0')}";
-      grouped.putIfAbsent(dStr, () => []).add(r);
-    }
+    // Maps to track energy deltas and counts per date string
+    final Map<String, double> r1Map = {};
+    final Map<String, double> r2Map = {};
+    final Map<String, double> totMap = {};
+    final Map<String, int> countMap = {};
+    final Map<String, DateTime> sampleDateMap = {};
 
-    final List<DailyRoomEnergy> result = [];
-    final sortedDates = grouped.keys.toList()..sort();
+    final firstDateStr = formatDate(valid.first.timestamp);
+    r1Map[firstDateStr] = 0.0;
+    r2Map[firstDateStr] = 0.0;
+    totMap[firstDateStr] = 0.0;
+    countMap[firstDateStr] = 1;
+    sampleDateMap[firstDateStr] = valid.first.timestamp;
 
-    for (final dateKey in sortedDates) {
-      final dayList = grouped[dateKey]!;
-      if (dayList.isEmpty) continue;
+    for (int i = 1; i < valid.length; i++) {
+      final prev = valid[i - 1];
+      final curr = valid[i];
+      final dateStr = formatDate(curr.timestamp);
 
-      double r1Energy = 0.0;
-      double r2Energy = 0.0;
-      double totEnergy = 0.0;
+      r1Map.putIfAbsent(dateStr, () => 0.0);
+      r2Map.putIfAbsent(dateStr, () => 0.0);
+      totMap.putIfAbsent(dateStr, () => 0.0);
+      countMap[dateStr] = (countMap[dateStr] ?? 0) + 1;
+      sampleDateMap[dateStr] = curr.timestamp;
 
-      if (dayList.length >= 2) {
-        // Room 1: cumulative difference
-        final hasHwE1 = dayList.any((r) => r.energy1 > 0.0);
-        if (hasHwE1) {
-          for (int i = 1; i < dayList.length; i++) {
-            final prev = dayList[i - 1].energy1;
-            final curr = dayList[i].energy1;
-            if (curr >= prev) {
-              r1Energy += (curr - prev);
-            } else {
-              r1Energy += curr; // meter reboot
-            }
-          }
+      // Room 1 delta
+      double dE1 = 0.0;
+      if (curr.energy1 > 0.0 || prev.energy1 > 0.0) {
+        if (curr.energy1 >= prev.energy1) {
+          dE1 = curr.energy1 - prev.energy1;
         } else {
-          // Trapezoidal power fallback
-          for (int i = 1; i < dayList.length; i++) {
-            final dt = dayList[i].timestamp.difference(dayList[i - 1].timestamp).inSeconds;
-            if (dt > 0 && dt <= 86400) {
-              final avgP1 = (dayList[i - 1].power1 + dayList[i].power1) / 2.0;
-              r1Energy += avgP1 * (dt / 3600.0) / 1000.0;
-            }
+          dE1 = curr.energy1; // meter reboot
+        }
+      } else {
+        final dtSec = curr.timestamp.difference(prev.timestamp).inSeconds;
+        if (dtSec > 0 && dtSec <= 86400) {
+          final avgP = (prev.power1 + curr.power1) / 2.0;
+          if (avgP > 0.0) {
+            dE1 = avgP * (dtSec / 3600.0) / 1000.0;
           }
         }
-
-        // Room 2: cumulative difference
-        final hasHwE2 = dayList.any((r) => r.energy2 > 0.0);
-        if (hasHwE2) {
-          for (int i = 1; i < dayList.length; i++) {
-            final prev = dayList[i - 1].energy2;
-            final curr = dayList[i].energy2;
-            if (curr >= prev) {
-              r2Energy += (curr - prev);
-            } else {
-              r2Energy += curr; // meter reboot
-            }
-          }
-        } else {
-          // Trapezoidal power fallback
-          for (int i = 1; i < dayList.length; i++) {
-            final dt = dayList[i].timestamp.difference(dayList[i - 1].timestamp).inSeconds;
-            if (dt > 0 && dt <= 86400) {
-              final avgP2 = (dayList[i - 1].power2 + dayList[i].power2) / 2.0;
-              r2Energy += avgP2 * (dt / 3600.0) / 1000.0;
-            }
-          }
-        }
-
-        totEnergy = r1Energy + r2Energy;
       }
 
-      const weekdayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-      final dayOfWeek = dayList.first.timestamp.weekday;
+      // Room 2 delta
+      double dE2 = 0.0;
+      if (curr.energy2 > 0.0 || prev.energy2 > 0.0) {
+        if (curr.energy2 >= prev.energy2) {
+          dE2 = curr.energy2 - prev.energy2;
+        } else {
+          dE2 = curr.energy2; // meter reboot
+        }
+      } else {
+        final dtSec = curr.timestamp.difference(prev.timestamp).inSeconds;
+        if (dtSec > 0 && dtSec <= 86400) {
+          final avgP = (prev.power2 + curr.power2) / 2.0;
+          if (avgP > 0.0) {
+            dE2 = avgP * (dtSec / 3600.0) / 1000.0;
+          }
+        }
+      }
+
+      // Total delta
+      double dTot = 0.0;
+      if (curr.totalEnergy > 0.0 || prev.totalEnergy > 0.0) {
+        if (curr.totalEnergy >= prev.totalEnergy) {
+          dTot = curr.totalEnergy - prev.totalEnergy;
+        } else {
+          dTot = curr.totalEnergy;
+        }
+      }
+      if (dTot == 0.0 && (dE1 + dE2 > 0.0)) {
+        dTot = dE1 + dE2;
+      }
+
+      r1Map[dateStr] = (r1Map[dateStr] ?? 0.0) + dE1;
+      r2Map[dateStr] = (r2Map[dateStr] ?? 0.0) + dE2;
+      totMap[dateStr] = (totMap[dateStr] ?? 0.0) + dTot;
+    }
+
+    const weekdayNames = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    final sortedDates = r1Map.keys.toList()..sort();
+    final List<DailyRoomEnergy> result = [];
+
+    for (final dateKey in sortedDates) {
+      final sampleDate = sampleDateMap[dateKey] ?? DateTime.now();
+      final dayOfWeek = sampleDate.weekday;
       final dayName = (dayOfWeek >= 1 && dayOfWeek <= 7) ? weekdayNames[dayOfWeek - 1] : "";
+      final r1 = (r1Map[dateKey] ?? 0.0).clamp(0.0, double.infinity);
+      final r2 = (r2Map[dateKey] ?? 0.0).clamp(0.0, double.infinity);
+      final tot = (totMap[dateKey] ?? (r1 + r2)).clamp(0.0, double.infinity);
+      final bill = (tot * tariffRate).clamp(0.0, double.infinity);
 
       result.add(DailyRoomEnergy(
         date: dateKey,
         dayName: dayName,
-        room1EnergyKWh: r1Energy.clamp(0.0, double.infinity),
-        room2EnergyKWh: r2Energy.clamp(0.0, double.infinity),
-        totalEnergyKWh: totEnergy.clamp(0.0, double.infinity),
-        estimatedBill: (totEnergy * tariffRate).clamp(0.0, double.infinity),
-        readingsCount: dayList.length,
+        room1EnergyKWh: r1,
+        room2EnergyKWh: r2,
+        totalEnergyKWh: tot,
+        estimatedBill: bill,
+        readingsCount: countMap[dateKey] ?? 0,
       ));
     }
 
@@ -727,42 +762,86 @@ class EnergyCalculator {
     final String statusText = isDeviceOn ? "● ON" : "OFF";
     final DateTime refTime = effectiveLatest?.timestamp ?? DateTime.now();
 
-    // Define time windows for today and this month
-    final startOfToday = DateTime(refTime.year, refTime.month, refTime.day);
-    final startOfMonth = DateTime(refTime.year, refTime.month, 1);
-
-    final todayList = allReadings.where((r) => r.timestamp.isAfter(startOfToday) || r.timestamp.isAtSameMomentAs(startOfToday)).toList();
-    final monthList = allReadings.where((r) => r.timestamp.isAfter(startOfMonth) || r.timestamp.isAtSameMomentAs(startOfMonth)).toList();
-
-    double todayKWh = computeEnergyKWh(todayList);
-    double monthKWh = computeEnergyKWh(monthList);
-
-    // If all historical data belongs to a single recording session and startOfMonth filter returned 0,
-    // compute the total session energy as the valid available energy
-    if (monthKWh == 0.0 && allReadings.length >= 2) {
-      monthKWh = computeEnergyKWh(allReadings);
-    }
-    if (todayKWh == 0.0 && monthKWh > 0.0 && allReadings.length >= 2 && todayList.length >= 2) {
-      todayKWh = monthKWh;
-    }
-
-    // Requirement 5: Estimated bill = today's energy in kWh × tariffRate
-    final double estimatedBill = todayKWh * tariffRate;
+    final todayStr = formatDate(refTime);
+    final yesterdayStr = formatDate(refTime.subtract(const Duration(days: 1)));
+    final monthPrefix = "${refTime.year.toString().padLeft(4, '0')}-${refTime.month.toString().padLeft(2, '0')}";
 
     // Compute complete historical daily room breakdown
     final dailyBreakdown = computeDailyRoomBreakdown(allReadings, tariffRate: tariffRate);
+
+    // Today's energy from daily breakdown
+    double todayKWh = 0.0;
+    int todayReadings = 0;
+    for (final d in dailyBreakdown) {
+      if (d.date == todayStr) {
+        todayKWh = d.totalEnergyKWh;
+        todayReadings = d.readingsCount;
+        break;
+      }
+    }
+
+    // Yesterday's energy from daily breakdown
+    double yesterdayKWh = 0.0;
+    for (final d in dailyBreakdown) {
+      if (d.date == yesterdayStr) {
+        yesterdayKWh = d.totalEnergyKWh;
+        break;
+      }
+    }
+
+    // This week (last 7 days window up to refTime)
+    final sevenDaysAgo = refTime.subtract(const Duration(days: 6));
+    final sevenDaysAgoStr = formatDate(DateTime(sevenDaysAgo.year, sevenDaysAgo.month, sevenDaysAgo.day));
+    double thisWeekKWh = 0.0;
+    for (final d in dailyBreakdown) {
+      if (d.date.compareTo(sevenDaysAgoStr) >= 0 && d.date.compareTo(todayStr) <= 0) {
+        thisWeekKWh += d.totalEnergyKWh;
+      }
+    }
+
+    // This month's energy (all dates in current month)
+    double monthKWh = 0.0;
+    int monthReadings = 0;
+    for (final d in dailyBreakdown) {
+      if (d.date.startsWith(monthPrefix)) {
+        monthKWh += d.totalEnergyKWh;
+        monthReadings += d.readingsCount;
+      }
+    }
+
+    // Fallbacks if data belongs to a single recording session
+    if (monthKWh == 0.0 && dailyBreakdown.isNotEmpty) {
+      for (final d in dailyBreakdown) {
+        monthKWh += d.totalEnergyKWh;
+        monthReadings += d.readingsCount;
+      }
+    }
+    if (todayKWh == 0.0 && dailyBreakdown.length == 1) {
+      todayKWh = dailyBreakdown.first.totalEnergyKWh;
+    }
+    if (thisWeekKWh == 0.0 && monthKWh > 0.0) {
+      thisWeekKWh = monthKWh;
+    }
+
+    // Estimated monthly bill = thisMonthEnergyKWh * tariffRate
+    final double estimatedMonthlyBill = monthKWh * tariffRate;
+    // Estimated today's bill = todayEnergyKWh * tariffRate
+    final double todayBill = todayKWh * tariffRate;
 
     return RealEnergyMetrics(
       currentPower: currentPower,
       isDeviceOn: isDeviceOn,
       statusText: statusText,
       todayEnergyKWh: todayKWh,
+      yesterdayEnergyKWh: yesterdayKWh,
+      thisWeekEnergyKWh: thisWeekKWh,
       thisMonthEnergyKWh: monthKWh,
       tariffRate: tariffRate,
-      estimatedBill: estimatedBill,
+      estimatedBill: estimatedMonthlyBill,
+      todayEstimatedBill: todayBill,
       totalReadingsCount: allReadings.length,
-      todayReadingsCount: todayList.length,
-      monthReadingsCount: monthList.length,
+      todayReadingsCount: todayReadings > 0 ? todayReadings : allReadings.length,
+      monthReadingsCount: monthReadings > 0 ? monthReadings : allReadings.length,
       lastUpdated: refTime,
       recentHistory: allReadings.length > 50 ? allReadings.sublist(allReadings.length - 50) : allReadings,
       dailyBreakdown: dailyBreakdown,

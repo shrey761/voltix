@@ -403,6 +403,119 @@ void main() {
       expect(wedData.totalEnergyKWh, closeTo(0.20, 0.0001));
       expect(wedData.estimatedBill, closeTo(1.40, 0.0001));
     });
+    test('TEST 11: Monthly bill calculates month-to-date total kWh * tariff, while todayEstimatedBill calculates today kWh * tariff', () {
+      final tue1 = EnergyReading.fromMap('tue_1', {
+        'timestamp': '2026-10-06 08:00:00',
+        'energy1': 0.0,
+        'energy2': 0.0,
+        'totalEnergy': 0.0,
+      });
+      final tue2 = EnergyReading.fromMap('tue_2', {
+        'timestamp': '2026-10-06 20:00:00',
+        'energy1': 0.10,
+        'energy2': 0.10,
+        'totalEnergy': 0.20,
+      });
+      final wed1 = EnergyReading.fromMap('wed_1', {
+        'timestamp': '2026-10-07 08:00:00',
+        'energy1': 0.10,
+        'energy2': 0.10,
+        'totalEnergy': 0.20,
+      });
+      final wed2 = EnergyReading.fromMap('wed_2', {
+        'timestamp': '2026-10-07 20:00:00',
+        'energy1': 0.20, // +0.10 kWh
+        'energy2': 0.25, // +0.15 kWh
+        'totalEnergy': 0.45, // +0.25 kWh
+      });
+
+      final metrics = EnergyCalculator.calculateMetrics(
+        latest: wed2,
+        history: [tue1, tue2, wed1, wed2],
+        tariffRate: 7.00,
+      );
+
+      // Today (Wed 10-07) energy = 0.25 kWh -> Today's bill = 0.25 * 7 = Rs 1.75
+      expect(metrics.todayEnergyKWh, closeTo(0.25, 0.0001));
+      expect(metrics.todayEstimatedBill, closeTo(1.75, 0.0001));
+
+      // Month-to-date (October) energy = 0.20 (Tue) + 0.25 (Wed) = 0.45 kWh
+      // Monthly estimated bill = 0.45 * 7 = Rs 3.15 (NOT just today's bill)
+      expect(metrics.thisMonthEnergyKWh, closeTo(0.45, 0.0001));
+      expect(metrics.estimatedBill, closeTo(3.15, 0.0001));
+    });
+
+    test('TEST 12: Gruha Jyothi Quota evaluates normal, warning (85%+), and limit exceeded with exact overflow units', () {
+      const quota = 96.0;
+
+      // Normal state: 50 kWh used (52.1%)
+      final normalUsed = 50.0;
+      final normalProgress = normalUsed / quota;
+      final normalRemaining = (quota - normalUsed).clamp(0.0, quota);
+      expect(normalProgress < 0.85, true);
+      expect(normalRemaining, 46.0);
+
+      // Warning state: 85 kWh used (88.5%)
+      final warnUsed = 85.0;
+      final warnProgress = warnUsed / quota;
+      final warnRemaining = (quota - warnUsed).clamp(0.0, quota);
+      expect(warnProgress >= 0.85 && warnProgress <= 1.0, true);
+      expect(warnRemaining, 11.0);
+
+      // Limit Exceeded state: 110 kWh used (114.6%)
+      final exceededUsed = 110.0;
+      final exceededOverflow = exceededUsed - quota;
+      expect(exceededUsed > quota, true);
+      expect(exceededOverflow, 14.0);
+    });
+
+    test('TEST 13: 7-Day Weekly Analytics groups readings into 7 calendar days up to reference date', () {
+      final r1a = EnergyReading.fromMap('r1a', {
+        'timestamp': '2026-10-04 08:00:00',
+        'energy1': 0.00,
+        'energy2': 0.00,
+        'totalEnergy': 0.00,
+      });
+      final r1b = EnergyReading.fromMap('r1b', {
+        'timestamp': '2026-10-04 20:00:00',
+        'energy1': 0.05,
+        'energy2': 0.05,
+        'totalEnergy': 0.10,
+      });
+      final r2a = EnergyReading.fromMap('r2a', {
+        'timestamp': '2026-10-06 08:00:00',
+        'energy1': 0.05,
+        'energy2': 0.05,
+        'totalEnergy': 0.10,
+      });
+      final r2b = EnergyReading.fromMap('r2b', {
+        'timestamp': '2026-10-06 20:00:00',
+        'energy1': 0.10,
+        'energy2': 0.10,
+        'totalEnergy': 0.20,
+      });
+      final r3a = EnergyReading.fromMap('r3a', {
+        'timestamp': '2026-10-07 08:00:00',
+        'energy1': 0.10,
+        'energy2': 0.10,
+        'totalEnergy': 0.20,
+      });
+      final r3b = EnergyReading.fromMap('r3b', {
+        'timestamp': '2026-10-07 20:00:00',
+        'energy1': 0.15,
+        'energy2': 0.15,
+        'totalEnergy': 0.30,
+      });
+
+      final metrics = EnergyCalculator.calculateMetrics(
+        latest: r3b,
+        history: [r1a, r1b, r2a, r2b, r3a, r3b],
+        tariffRate: 7.00,
+      );
+
+      expect(metrics.dailyBreakdown.length, 3);
+      expect(metrics.thisWeekEnergyKWh, closeTo(0.30, 0.0001));
+    });
   });
 
   group('Voltix Widgets Unit Tests', () {

@@ -38,56 +38,45 @@ class AnalyticsScreen extends StatelessWidget {
                 tariffRate: tariffService.tariffRate,
               );
 
-              // Calculate weekly total
-              double weeklyTotal = analytics?.weeklyTotalUnits ?? 0.0;
-              if (weeklyTotal == 0.0 && readings.isNotEmpty) {
-                final startOfWeek = DateTime.now().subtract(Duration(days: DateTime.now().weekday - 1));
-                final startOfW = DateTime(startOfWeek.year, startOfWeek.month, startOfWeek.day);
-                final wReadings = readings.where((r) => r.timestamp.isAfter(startOfW) || r.timestamp.isAtSameMomentAs(startOfW)).toList();
-                if (wReadings.isNotEmpty) {
-                  weeklyTotal = EnergyCalculator.computeEnergyKWh(wReadings);
+              // Reference date is latest reading or DateTime.now()
+              final refTime = readings.isNotEmpty ? readings.last.timestamp : DateTime.now();
+
+              // Build the last 7 calendar days window (from 6 days ago up to refTime)
+              const weekdayShortNames = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+              final List<DailyBarItem> bars = List.generate(7, (i) {
+                final targetDay = refTime.subtract(Duration(days: 6 - i));
+                final targetDateStr = EnergyCalculator.formatDate(targetDay);
+                final dayName = weekdayShortNames[targetDay.weekday - 1];
+
+                double dayUnits = 0.0;
+                for (final d in dailyBreakdown) {
+                  if (d.date == targetDateStr) {
+                    dayUnits = d.totalEnergyKWh;
+                    break;
+                  }
                 }
+
+                return DailyBarItem(
+                  dayIndex: i,
+                  dayName: dayName,
+                  date: targetDateStr,
+                  units: dayUnits,
+                );
+              });
+
+              // Calculate weekly total from the 7-day window
+              double weeklyTotal = 0.0;
+              for (final b in bars) {
+                weeklyTotal += b.units;
+              }
+              if (weeklyTotal == 0.0 && analytics != null && analytics.weeklyTotalUnits > 0) {
+                weeklyTotal = analytics.weeklyTotalUnits;
               }
 
-              // Extract daily bars
-              List<DailyBarItem> bars = analytics?.dailyBars ?? [];
-              if (bars.isEmpty) {
-                const days = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
-                bars = List.generate(7, (i) {
-                  // Find energy from dailyBreakdown for that day of current week if available
-                  double dayUnits = 0.0;
-                  final now = DateTime.now();
-                  final targetDay = now.subtract(Duration(days: now.weekday - 1 - i));
-                  final targetDateStr = "${targetDay.year.toString().padLeft(4, '0')}-"
-                      "${targetDay.month.toString().padLeft(2, '0')}-"
-                      "${targetDay.day.toString().padLeft(2, '0')}";
-
-                  for (final d in dailyBreakdown) {
-                    if (d.date == targetDateStr) {
-                      dayUnits = d.totalEnergyKWh;
-                      break;
-                    }
-                  }
-
-                  if (dayUnits == 0.0 && i == now.weekday - 1) {
-                    dayUnits = weeklyTotal;
-                  }
-
-                  return DailyBarItem(
-                    dayIndex: i,
-                    dayName: days[i],
-                    date: targetDateStr,
-                    units: dayUnits,
-                  );
-                });
-              }
-
-              // Max bar height
-              double maxBarUnits = 1.0;
-              for (var b in bars) {
-                if (b.units > maxBarUnits) maxBarUnits = b.units;
-              }
-              maxBarUnits = (maxBarUnits * 1.25).clamp(1.0, 100.0);
+              // Max bar height for chart scaling
+              double maxBarUnits = bars.map((b) => b.units).fold(0.0, (p, c) => c > p ? c : p);
+              if (maxBarUnits <= 0.0) maxBarUnits = 0.05;
+              maxBarUnits = (maxBarUnits * 1.25).clamp(0.05, 100.0);
 
               // Hourly loads
               final h1 = analytics?.hourlyLoadRoom1 ?? List.filled(24, 0.0);
