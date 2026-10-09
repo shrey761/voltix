@@ -16,7 +16,7 @@ class PredictionScreen extends StatelessWidget {
         backgroundColor: Colors.black,
         elevation: 0,
         title: const Text(
-          "Prediction Insights (AI Advisor)",
+          "Prediction Insights",
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
@@ -275,7 +275,7 @@ class PredictionScreen extends StatelessWidget {
                               Icon(Icons.auto_awesome, color: Colors.greenAccent, size: 22),
                               SizedBox(width: 8),
                               Text(
-                                "AI Prediction Insights & Actions",
+                                "Prediction Insights & Actions",
                                 style: TextStyle(
                                   color: Colors.white,
                                   fontSize: 18,

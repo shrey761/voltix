@@ -42,7 +42,7 @@ class NotificationScreen extends StatelessWidget {
                       activeList.add(EnergyNotification(
                         id: "local_proj_exceed",
                         type: "warning",
-                        title: "Projected Free Limit Exceed",
+                        title: "Projected Quota Limit Exceeded",
                         subtitle: "Projected month-end consumption is ${forecast.projectedMonthEndUnits.toStringAsFixed(1)} Units (exceeds 96-unit quota by ${forecast.projectedExcessUnits.toStringAsFixed(1)} Units). Additional charges may apply.",
                         timestamp: "Active",
                         priority: "HIGH",
@@ -53,7 +53,7 @@ class NotificationScreen extends StatelessWidget {
                       activeList.add(EnergyNotification(
                         id: "local_approaching_limit",
                         type: "warning",
-                        title: "Approaching Free Unit Limit",
+                        title: "Approaching Quota Limit",
                         subtitle: "You have consumed ${forecast.monthToDateUnits.toStringAsFixed(1)} of 96 allocated units. Only ${forecast.remainingUnits.toStringAsFixed(1)} units remaining.",
                         timestamp: "Active",
                         priority: "HIGH",
@@ -110,7 +110,7 @@ class NotificationScreen extends StatelessWidget {
                         id: "local_optimal",
                         type: "optimal",
                         title: "All Rooms Operating Normally",
-                        subtitle: "Electricity consumption is well within the 96-unit Gruha Jyothi quota and no peak anomalies are predicted.",
+                        subtitle: "Electricity consumption is well within the 96-unit monthly quota and no peak anomalies are predicted.",
                         timestamp: "Just now",
                         priority: "LOW",
                       ));

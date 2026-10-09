@@ -40,7 +40,7 @@ class OptimizationScreen extends StatelessWidget {
               final suggestions = opt?.suggestions ?? [
                 OptimizationSuggestionItem(
                   title: r1Units >= r2Units ? "Room 1 is the primary energy contributor" : "Room 2 is the primary energy contributor",
-                  subtitle: "Inspect high-wattage appliances and reduce idle runtime during active hours.",
+                  subtitle: "Inspect active appliances and reduce idle runtime during peak hours.",
                   icon: "warning",
                 ),
                 OptimizationSuggestionItem(
@@ -49,7 +49,7 @@ class OptimizationScreen extends StatelessWidget {
                   icon: "access_time",
                 ),
                 OptimizationSuggestionItem(
-                  title: "Stay within Gruha Jyothi quota",
+                  title: "Maintain consumption within monthly quota",
                   subtitle: "Maintain daily average under ${(96.0 / (forecast?.daysInMonth ?? 31)).toStringAsFixed(1)} units/day.",
                   icon: "energy_savings_leaf",
                 ),
@@ -109,7 +109,7 @@ class OptimizationScreen extends StatelessWidget {
                           Text(
                             projectedEnd > 96.0
                                 ? "Projected month-end: ${projectedEnd.toStringAsFixed(1)} Units (exceeds allocation by ${(projectedEnd - 96.0).toStringAsFixed(1)} Units)"
-                                : "Projected month-end: ${projectedEnd.toStringAsFixed(1)} Units (within free 96-unit allocation)",
+                                : "Projected month-end: ${projectedEnd.toStringAsFixed(1)} Units (within 96-unit allocation)",
                             style: TextStyle(
                               color: projectedEnd > 96.0 ? Colors.orangeAccent : Colors.white70,
                               fontSize: 13,

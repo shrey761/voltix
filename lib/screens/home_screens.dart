@@ -180,7 +180,7 @@ class HomeScreen extends StatelessWidget {
                               const SizedBox(height: 18),
 
                               // ==================================================
-                              // 4. PREDICTIVE LOAD SECTION (AI ADVISOR)
+                              // 4. PREDICTIVE LOAD SECTION
                               // ==================================================
                               _buildPredictiveLoadSection(context, prediction, metrics),
                               const SizedBox(height: 18),
@@ -192,7 +192,7 @@ class HomeScreen extends StatelessWidget {
                               const SizedBox(height: 18),
 
                               // ==================================================
-                              // 6. GRUHA JYOTHI QUOTA PROGRESS CARD
+                              // 6. ENERGY CONSUMPTION QUOTA PROGRESS CARD
                               // ==================================================
                               _buildQuotaCard(metrics, tariffService.quotaUnits),
                               const SizedBox(height: 18),
@@ -630,7 +630,7 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  /// 4. Predictive Load Section (AI Advisor)
+  /// 4. Predictive Load Section
   static Widget _buildPredictiveLoadSection(
     BuildContext context,
     PredictionResult? pred,
@@ -716,7 +716,7 @@ class HomeScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        "Not enough historical data for prediction yet. AI load advisor will activate as telemetry accumulates.",
+                        "Not enough historical data for prediction yet. Load predictions will activate as telemetry accumulates.",
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.5),
                           fontSize: 11,
@@ -793,7 +793,7 @@ class HomeScreen extends StatelessWidget {
       physics: const NeverScrollableScrollPhysics(),
       crossAxisSpacing: 10,
       mainAxisSpacing: 10,
-      childAspectRatio: 1.5,
+      childAspectRatio: 1.25,
       children: [
         DataCard(
           title: "Voltage",
@@ -819,7 +819,7 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  /// 6. Gruha Jyothi Quota Progress Card
+  /// 6. Energy Consumption Quota Progress Card
   static Widget _buildQuotaCard(RealEnergyMetrics metrics, double quotaUnits) {
     final double used = metrics.thisMonthEnergyKWh;
     final double quota = quotaUnits > 0 ? quotaUnits : 96.0;
@@ -855,7 +855,7 @@ class HomeScreen extends StatelessWidget {
                   Icon(Icons.energy_savings_leaf, color: Colors.greenAccent, size: 20),
                   SizedBox(width: 8),
                   Text(
-                    "Gruha Jyothi Quota",
+                    "Energy Consumption Quota",
                     style: TextStyle(
                       color: Colors.white,
                       fontSize: 15,

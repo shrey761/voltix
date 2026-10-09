@@ -1,4 +1,4 @@
-﻿import 'package:flutter/foundation.dart';
+import 'package:flutter/foundation.dart';
 
 /// Configurable Electricity Tariff & Quota Service
 class TariffService {
@@ -9,7 +9,7 @@ class TariffService {
   /// Default electricity tariff rate: Rs 7.00 per kWh
   final ValueNotifier<double> tariffRateNotifier = ValueNotifier<double>(7.00);
 
-  /// Default monthly energy quota: 96.0 Units (Gruha Jyothi)
+  /// Default monthly energy quota: 96.0 Units
   final ValueNotifier<double> quotaUnitsNotifier = ValueNotifier<double>(96.0);
 
   double get tariffRate => tariffRateNotifier.value;

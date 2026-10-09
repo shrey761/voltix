@@ -136,7 +136,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text(
-                "Enter monthly free electricity allocation (Default: 96 Units):",
+                "Enter monthly electricity allocation (Default: 96 Units):",
                 style: TextStyle(color: Colors.white70, fontSize: 13),
               ),
               const SizedBox(height: 16),
@@ -245,7 +245,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                         const Divider(color: Colors.white10, height: 1),
                         ListTile(
                           leading: const Icon(Icons.energy_savings_leaf, color: Colors.blueAccent),
-                          title: const Text("Gruha Jyothi Quota", style: TextStyle(color: Colors.white)),
+                          title: const Text("Energy Consumption Quota", style: TextStyle(color: Colors.white)),
                           subtitle: Text("${quotaUnits.toStringAsFixed(0)} Units / Month", style: const TextStyle(color: Colors.white70)),
                           trailing: const Icon(Icons.edit, color: Colors.orangeAccent, size: 20),
                           onTap: _showEditQuotaDialog,
