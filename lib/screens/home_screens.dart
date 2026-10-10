@@ -128,96 +128,101 @@ class HomeScreen extends StatelessWidget {
       body: ValueListenableBuilder<double>(
         valueListenable: tariffService.tariffRateNotifier,
         builder: (context, tariffRate, _) {
-          return StreamBuilder<List<EnergyReading>>(
-            stream: energyService.recentReadingsStream,
-            builder: (context, historySnap) {
-              final history = historySnap.data ?? [];
+          return ValueListenableBuilder<double>(
+            valueListenable: tariffService.quotaUnitsNotifier,
+            builder: (context, quotaUnits, _) {
+              return StreamBuilder<List<EnergyReading>>(
+                stream: energyService.recentReadingsStream,
+                builder: (context, historySnap) {
+                  final history = historySnap.data ?? [];
 
-              return StreamBuilder<EnergyReading?>(
-                stream: energyService.latestReadingStream,
-                builder: (context, readingSnapshot) {
-                  final reading = readingSnapshot.data ?? (history.isNotEmpty ? history.last : null);
-                  final metrics = EnergyCalculator.calculateMetrics(
-                    latest: reading,
-                    history: history,
-                    tariffRate: tariffRate,
-                  );
+                  return StreamBuilder<EnergyReading?>(
+                    stream: energyService.latestReadingStream,
+                    builder: (context, readingSnapshot) {
+                      final reading = readingSnapshot.data ?? (history.isNotEmpty ? history.last : null);
+                      final metrics = EnergyCalculator.calculateMetrics(
+                        latest: reading,
+                        history: history,
+                        tariffRate: tariffRate,
+                      );
 
-                  return StreamBuilder<PredictionResult?>(
-                    stream: energyService.predictionsStream,
-                    builder: (context, predSnap) {
-                      final prediction = predSnap.data;
+                      return StreamBuilder<PredictionResult?>(
+                        stream: energyService.predictionsStream,
+                        builder: (context, predSnap) {
+                          final prediction = predSnap.data;
 
-                      return RefreshIndicator(
-                        onRefresh: () async {
-                          // Realtime StreamBuilder automatically syncs with Firebase
-                          await Future.delayed(const Duration(milliseconds: 300));
-                        },
-                        color: Colors.orange,
-                        backgroundColor: const Color(0xFF1C1C1E),
-                        child: SingleChildScrollView(
-                          physics: const AlwaysScrollableScrollPhysics(),
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // ==================================================
-                              // 1. HERO CARD: CURRENT POWER & DEVICE STATUS
-                              // ==================================================
-                              _buildCurrentPowerHeroCard(metrics),
-                              const SizedBox(height: 16),
+                          return RefreshIndicator(
+                            onRefresh: () async {
+                              // Realtime StreamBuilder automatically syncs with Firebase
+                              await Future.delayed(const Duration(milliseconds: 300));
+                            },
+                            color: Colors.orange,
+                            backgroundColor: const Color(0xFF1C1C1E),
+                            child: SingleChildScrollView(
+                              physics: const AlwaysScrollableScrollPhysics(),
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // ==================================================
+                                  // 1. HERO CARD: CURRENT POWER & DEVICE STATUS
+                                  // ==================================================
+                                  _buildCurrentPowerHeroCard(metrics),
+                                  const SizedBox(height: 16),
 
-                              // ==================================================
-                              // 2. ACCUMULATED ENERGY & COST METRICS (3 CARDS)
-                              // ==================================================
-                              _buildAccumulatedMetricsRow(metrics),
-                              const SizedBox(height: 18),
+                                  // ==================================================
+                                  // 2. ACCUMULATED ENERGY & COST METRICS (3 CARDS)
+                                  // ==================================================
+                                  _buildAccumulatedMetricsRow(metrics),
+                                  const SizedBox(height: 18),
 
-                              // ==================================================
-                              // 3. REAL HISTORICAL ENERGY USAGE GRAPH
-                              // ==================================================
-                              _buildHistoricalGraphSection(metrics),
-                              const SizedBox(height: 18),
+                                  // ==================================================
+                                  // 3. REAL HISTORICAL ENERGY USAGE GRAPH
+                                  // ==================================================
+                                  _buildHistoricalGraphSection(metrics),
+                                  const SizedBox(height: 18),
 
-                              // ==================================================
-                              // 4. PREDICTIVE LOAD SECTION
-                              // ==================================================
-                              _buildPredictiveLoadSection(context, prediction, metrics),
-                              const SizedBox(height: 18),
+                                  // ==================================================
+                                  // 4. PREDICTIVE LOAD SECTION
+                                  // ==================================================
+                                  _buildPredictiveLoadSection(context, prediction, metrics),
+                                  const SizedBox(height: 18),
 
-                              // ==================================================
-                              // 5. LIVE ELECTRICAL SENSOR GRID
-                              // ==================================================
-                              _buildElectricalGrid(reading),
-                              const SizedBox(height: 18),
+                                  // ==================================================
+                                  // 5. LIVE ELECTRICAL SENSOR GRID
+                                  // ==================================================
+                                  _buildElectricalGrid(reading),
+                                  const SizedBox(height: 18),
 
-                              // ==================================================
-                              // 6. ENERGY CONSUMPTION QUOTA PROGRESS CARD
-                              // ==================================================
-                              _buildQuotaCard(metrics, tariffService.quotaUnits),
-                              const SizedBox(height: 18),
+                                  // ==================================================
+                                  // 6. ENERGY CONSUMPTION QUOTA PROGRESS CARD
+                                  // ==================================================
+                                  _buildQuotaCard(metrics, quotaUnits),
+                                  const SizedBox(height: 18),
 
-                              // ==================================================
-                              // 7. OPTIMIZATION SHORTCUT CARD
-                              // ==================================================
-                              _buildOptimizationCard(context, energyService),
-                              const SizedBox(height: 20),
+                                  // ==================================================
+                                  // 7. OPTIMIZATION SHORTCUT CARD
+                                  // ==================================================
+                                  _buildOptimizationCard(context, energyService),
+                                  const SizedBox(height: 20),
 
-                              // FOOTER
-                              Center(
-                                child: Text(
-                                  "ESP32 Telemetry • Random Forest Inference • Voltix Engine",
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.35),
-                                    fontSize: 11,
-                                    letterSpacing: 0.5,
+                                  // FOOTER
+                                  Center(
+                                    child: Text(
+                                      "ESP32 Telemetry • Random Forest Inference • Voltix Engine",
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(alpha: 0.35),
+                                        fontSize: 11,
+                                        letterSpacing: 0.5,
+                                      ),
+                                    ),
                                   ),
-                                ),
+                                  const SizedBox(height: 16),
+                                ],
                               ),
-                              const SizedBox(height: 16),
-                            ],
-                          ),
-                        ),
+                            ),
+                          );
+                        },
                       );
                     },
                   );

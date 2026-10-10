@@ -281,6 +281,23 @@ void main() {
       expect(tariffService.calculateBill(12.64), closeTo(94.80, 0.01));
     });
 
+    test('TEST 7b: TariffService dynamic quota update triggers ValueNotifier and updates getters', () async {
+      final tariffService = TariffService();
+      expect(tariffService.quotaUnits, greaterThan(0));
+
+      double notifiedQuota = 0.0;
+      final listener = () {
+        notifiedQuota = tariffService.quotaUnitsNotifier.value;
+      };
+      tariffService.quotaUnitsNotifier.addListener(listener);
+
+      await tariffService.updateQuotaUnits(10.0);
+      expect(tariffService.quotaUnits, 10.0);
+      expect(notifiedQuota, 10.0);
+
+      tariffService.quotaUnitsNotifier.removeListener(listener);
+    });
+
     test('TEST 8: 5W ON/OFF Threshold does NOT alter raw power value (2W -> 2.0W OFF, 20W -> 20.0W ON)', () {
       final rLow = EnergyReading.fromMap('r_low', {
         'timestamp': '2026-10-06 10:00:00',

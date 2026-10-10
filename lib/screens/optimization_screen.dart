@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/energy_models.dart';
 import '../services/energy_service.dart';
+import '../services/tariff_service.dart';
 
 class OptimizationScreen extends StatelessWidget {
   const OptimizationScreen({super.key});
@@ -8,6 +9,7 @@ class OptimizationScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final energyService = EnergyService();
+    final tariffService = TariffService();
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -19,124 +21,142 @@ class OptimizationScreen extends StatelessWidget {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
-      body: StreamBuilder<OptimizationInsight?>(
-        stream: energyService.optimizationStream,
-        builder: (context, optSnap) {
-          final opt = optSnap.data;
+      body: ValueListenableBuilder<double>(
+        valueListenable: tariffService.quotaUnitsNotifier,
+        builder: (context, dynamicQuota, _) {
+          return StreamBuilder<OptimizationInsight?>(
+            stream: energyService.optimizationStream,
+            builder: (context, optSnap) {
+              final opt = optSnap.data;
 
-          return StreamBuilder<MonthlyForecast?>(
-            stream: energyService.monthlyForecastStream,
-            builder: (context, forecastSnap) {
-              final forecast = forecastSnap.data;
+              return StreamBuilder<MonthlyForecast?>(
+                stream: energyService.monthlyForecastStream,
+                builder: (context, forecastSnap) {
+                  final forecast = forecastSnap.data;
 
-              final double r1Units = opt?.room1Units ?? ((forecast?.monthToDateUnits ?? 0.0) * 0.5);
-              final double r2Units = opt?.room2Units ?? ((forecast?.monthToDateUnits ?? 0.0) * 0.5);
-              final double r1Pct = opt?.room1Percent ?? 50.0;
-              final double r2Pct = opt?.room2Percent ?? 50.0;
-              final double mtd = forecast?.monthToDateUnits ?? 0.0;
-              final double projectedEnd = forecast?.projectedMonthEndUnits ?? 0.0;
-              final double remaining = forecast?.remainingUnits ?? 96.0;
+                  final double quota = (forecast != null && forecast.allocatedUnits > 0)
+                      ? forecast.allocatedUnits
+                      : dynamicQuota;
 
-              final suggestions = opt?.suggestions ?? [
-                OptimizationSuggestionItem(
-                  title: r1Units >= r2Units ? "Room 1 is the primary energy contributor" : "Room 2 is the primary energy contributor",
-                  subtitle: "Inspect active appliances and reduce idle runtime during peak hours.",
-                  icon: "warning",
-                ),
-                OptimizationSuggestionItem(
-                  title: "Shift flexible loads to off-peak hours",
-                  subtitle: "Running high-wattage equipment during non-peak hours optimizes grid efficiency.",
-                  icon: "access_time",
-                ),
-                OptimizationSuggestionItem(
-                  title: "Maintain consumption within monthly quota",
-                  subtitle: "Maintain daily average under ${(96.0 / (forecast?.daysInMonth ?? 31)).toStringAsFixed(1)} units/day.",
-                  icon: "energy_savings_leaf",
-                ),
-              ];
+                  final double r1Units = opt?.room1Units ?? ((forecast?.monthToDateUnits ?? 0.0) * 0.5);
+                  final double r2Units = opt?.room2Units ?? ((forecast?.monthToDateUnits ?? 0.0) * 0.5);
+                  final double r1Pct = opt?.room1Percent ?? 50.0;
+                  final double r2Pct = opt?.room2Percent ?? 50.0;
+                  final double mtd = forecast?.monthToDateUnits ?? 0.0;
+                  final double projectedEnd = forecast?.projectedMonthEndUnits ?? 0.0;
+                  final double remaining = (quota - mtd).clamp(0.0, quota);
+                  final double projectedExcess = (projectedEnd - quota).clamp(0.0, double.infinity);
+                  final double rawProgress = (quota > 0) ? (mtd / quota) : 0.0;
+                  final bool isExceeded = mtd > quota;
+                  final bool isWarning = !isExceeded && rawProgress >= 0.85;
 
-              return SingleChildScrollView(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    // ==================================================
-                    // OPTIMIZATION STATUS & QUOTA HEALTH CARD
-                    // ==================================================
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(22),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF1C1C1E),
-                        borderRadius: BorderRadius.circular(24),
-                        border: Border.all(color: Colors.white10),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Row(
+                  final Color quotaColor = isExceeded
+                      ? Colors.redAccent
+                      : (isWarning ? Colors.orangeAccent : Colors.greenAccent);
+
+                  final int daysInMonth = forecast?.daysInMonth ?? 30;
+                  final double targetDaily = quota / daysInMonth;
+
+                  final suggestions = opt?.suggestions ?? [
+                    OptimizationSuggestionItem(
+                      title: r1Units >= r2Units ? "Room 1 is the primary energy contributor" : "Room 2 is the primary energy contributor",
+                      subtitle: "Inspect active appliances and reduce idle runtime during peak hours.",
+                      icon: "warning",
+                    ),
+                    OptimizationSuggestionItem(
+                      title: "Shift flexible loads to off-peak hours",
+                      subtitle: "Running high-wattage equipment during non-peak hours optimizes grid efficiency.",
+                      icon: "access_time",
+                    ),
+                    OptimizationSuggestionItem(
+                      title: "Maintain consumption within monthly quota",
+                      subtitle: "Maintain daily average under ${targetDaily.toStringAsFixed(1)} units/day.",
+                      icon: "energy_savings_leaf",
+                    ),
+                  ];
+
+                  return SingleChildScrollView(
+                    padding: const EdgeInsets.all(16),
+                    child: Column(
+                      children: [
+                        // ==================================================
+                        // OPTIMIZATION STATUS & QUOTA HEALTH CARD
+                        // ==================================================
+                        Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.all(22),
+                          decoration: BoxDecoration(
+                            color: const Color(0xFF1C1C1E),
+                            borderRadius: BorderRadius.circular(24),
+                            border: Border.all(color: Colors.white10),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Icon(
-                                Icons.energy_savings_leaf,
-                                color: Colors.greenAccent,
-                                size: 28,
+                              const Row(
+                                children: [
+                                  Icon(
+                                    Icons.energy_savings_leaf,
+                                    color: Colors.greenAccent,
+                                    size: 28,
+                                  ),
+                                  SizedBox(width: 10),
+                                  Text(
+                                    "Optimization Opportunity",
+                                    style: TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 20,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ],
                               ),
-                              SizedBox(width: 10),
+                              const SizedBox(height: 20),
+                              const Text(
+                                "Current Quota Status",
+                                style: TextStyle(color: Colors.white70),
+                              ),
+                              const SizedBox(height: 8),
                               Text(
-                                "Optimization Opportunity",
+                                "${mtd.toStringAsFixed(2)} / ${quota.toStringAsFixed(0)} Units Used",
                                 style: TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 20,
+                                  color: quotaColor,
+                                  fontSize: 26,
                                   fontWeight: FontWeight.bold,
                                 ),
                               ),
+                              const SizedBox(height: 6),
+                              Text(
+                                projectedEnd > quota
+                                    ? "Projected month-end: ${projectedEnd.toStringAsFixed(1)} Units (exceeds allocation by ${projectedExcess.toStringAsFixed(1)} Units)"
+                                    : "Projected month-end: ${projectedEnd.toStringAsFixed(1)} Units (within ${quota.toStringAsFixed(0)}-unit allocation)",
+                                style: TextStyle(
+                                  color: projectedEnd > quota ? Colors.orangeAccent : Colors.white70,
+                                  fontSize: 13,
+                                ),
+                              ),
+                              const SizedBox(height: 22),
+
+                              // Quota Progress Bar
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(20),
+                                child: LinearProgressIndicator(
+                                  value: rawProgress.clamp(0.0, 1.0),
+                                  minHeight: 12,
+                                  backgroundColor: Colors.white12,
+                                  valueColor: AlwaysStoppedAnimation(quotaColor),
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                isExceeded
+                                    ? "Quota exceeded by ${(mtd - quota).toStringAsFixed(2)} Units"
+                                    : "${remaining.toStringAsFixed(2)} Units remaining this billing period",
+                                style: const TextStyle(color: Colors.white54, fontSize: 13),
+                              ),
                             ],
                           ),
-                          const SizedBox(height: 20),
-                          const Text(
-                            "Current Quota Status",
-                            style: TextStyle(color: Colors.white70),
-                          ),
-                          const SizedBox(height: 8),
-                          Text(
-                            "${mtd.toStringAsFixed(2)} / 96.0 Units Used",
-                            style: const TextStyle(
-                              color: Colors.greenAccent,
-                              fontSize: 26,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          const SizedBox(height: 6),
-                          Text(
-                            projectedEnd > 96.0
-                                ? "Projected month-end: ${projectedEnd.toStringAsFixed(1)} Units (exceeds allocation by ${(projectedEnd - 96.0).toStringAsFixed(1)} Units)"
-                                : "Projected month-end: ${projectedEnd.toStringAsFixed(1)} Units (within 96-unit allocation)",
-                            style: TextStyle(
-                              color: projectedEnd > 96.0 ? Colors.orangeAccent : Colors.white70,
-                              fontSize: 13,
-                            ),
-                          ),
-                          const SizedBox(height: 22),
-
-                          // Quota Progress Bar
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(20),
-                            child: LinearProgressIndicator(
-                              value: (mtd / 96.0).clamp(0.0, 1.0),
-                              minHeight: 12,
-                              backgroundColor: Colors.white12,
-                              valueColor: AlwaysStoppedAnimation(
-                                (mtd / 96.0) >= 0.85 ? Colors.redAccent : Colors.greenAccent,
-                              ),
-                            ),
-                          ),
-                          const SizedBox(height: 10),
-                          Text(
-                            "${remaining.toStringAsFixed(2)} Units remaining this billing period",
-                            style: const TextStyle(color: Colors.white54, fontSize: 13),
-                          ),
-                        ],
-                      ),
-                    ),
+                        ),
                     const SizedBox(height: 20),
 
                     // ==================================================
@@ -197,9 +217,11 @@ class OptimizationScreen extends StatelessWidget {
             },
           );
         },
-      ),
-    );
-  }
+      );
+    },
+  ),
+);
+}
 
   static IconData getIconData(String iconName) {
     switch (iconName) {

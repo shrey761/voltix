@@ -32,6 +32,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showEditTariffDialog() {
+    _tariffController.text = _tariffService.tariffRate.toStringAsFixed(2);
     showDialog(
       context: context,
       builder: (ctx) {
@@ -79,9 +80,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     backgroundColor: const Color(0xFF2C2C2E),
                     label: Text("₹$rate", style: const TextStyle(color: Colors.white, fontSize: 12)),
                     onPressed: () {
-                      setState(() {
-                        _tariffController.text = rate.toStringAsFixed(2);
-                      });
+                      _tariffController.text = rate.toStringAsFixed(2);
                     },
                   );
                 }).toList(),
@@ -98,20 +97,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 backgroundColor: Colors.orange,
                 foregroundColor: Colors.black,
               ),
-              onPressed: () {
+              onPressed: () async {
                 final double? parsed = double.tryParse(_tariffController.text);
-                if (parsed != null && parsed >= 0) {
-                  setState(() {
-                    _tariffService.tariffRate = parsed;
-                  });
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text("Tariff rate updated to ₹${parsed.toStringAsFixed(2)}/kWh"),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
+                final messenger = ScaffoldMessenger.of(context);
                 Navigator.pop(ctx);
+                if (parsed != null && parsed >= 0) {
+                  await _tariffService.updateTariffRate(parsed);
+                  if (mounted) {
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text("Tariff rate updated to ₹${parsed.toStringAsFixed(2)}/kWh"),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                }
               },
               child: const Text("Save"),
             ),
@@ -122,6 +122,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   void _showEditQuotaDialog() {
+    _quotaController.text = _tariffService.quotaUnits.toStringAsFixed(0);
     showDialog(
       context: context,
       builder: (ctx) {
@@ -171,20 +172,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 backgroundColor: Colors.orange,
                 foregroundColor: Colors.black,
               ),
-              onPressed: () {
+              onPressed: () async {
                 final double? parsed = double.tryParse(_quotaController.text);
-                if (parsed != null && parsed > 0) {
-                  setState(() {
-                    _tariffService.quotaUnits = parsed;
-                  });
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text("Monthly quota updated to ${parsed.toStringAsFixed(0)} Units"),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                }
+                final messenger = ScaffoldMessenger.of(context);
                 Navigator.pop(ctx);
+                if (parsed != null && parsed > 0) {
+                  await _tariffService.updateQuotaUnits(parsed);
+                  if (mounted) {
+                    messenger.showSnackBar(
+                      SnackBar(
+                        content: Text("Monthly quota updated to ${parsed.toStringAsFixed(0)} Units"),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                }
               },
               child: const Text("Save"),
             ),

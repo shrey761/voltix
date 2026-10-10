@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../models/energy_models.dart';
 import '../services/energy_service.dart';
+import '../services/tariff_service.dart';
 
 class NotificationScreen extends StatelessWidget {
   const NotificationScreen({super.key});
@@ -8,6 +9,7 @@ class NotificationScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final energyService = EnergyService();
+    final tariffService = TariffService();
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -19,115 +21,132 @@ class NotificationScreen extends StatelessWidget {
           style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
         ),
       ),
-      body: StreamBuilder<List<EnergyNotification>>(
-        stream: energyService.notificationsStream,
-        builder: (context, notifSnap) {
-          final serverNotifs = notifSnap.data ?? [];
+      body: ValueListenableBuilder<double>(
+        valueListenable: tariffService.quotaUnitsNotifier,
+        builder: (context, quotaUnits, _) {
+          return StreamBuilder<List<EnergyNotification>>(
+            stream: energyService.notificationsStream,
+            builder: (context, notifSnap) {
+              final serverNotifs = notifSnap.data ?? [];
 
-          return StreamBuilder<MonthlyForecast?>(
-            stream: energyService.monthlyForecastStream,
-            builder: (context, forecastSnap) {
-              final forecast = forecastSnap.data;
+              return StreamBuilder<MonthlyForecast?>(
+                stream: energyService.monthlyForecastStream,
+                builder: (context, forecastSnap) {
+                  final forecast = forecastSnap.data;
+                  final double quota = (forecast != null && forecast.allocatedUnits > 0)
+                      ? forecast.allocatedUnits
+                      : quotaUnits;
 
-              return StreamBuilder<PredictionResult?>(
-                stream: energyService.predictionsStream,
-                builder: (context, predSnap) {
-                  final pred = predSnap.data;
+                  return StreamBuilder<PredictionResult?>(
+                    stream: energyService.predictionsStream,
+                    builder: (context, predSnap) {
+                      final pred = predSnap.data;
 
-                  // Merge server notifications with local dynamic rules if server stream is empty
-                  List<EnergyNotification> activeList = List.from(serverNotifs);
+                      // Merge server notifications with local dynamic rules if server stream is empty
+                      List<EnergyNotification> activeList = List.from(serverNotifs);
 
-                  if (activeList.isEmpty) {
-                    if (forecast != null && forecast.projectedExcessUnits > 0) {
-                      activeList.add(EnergyNotification(
-                        id: "local_proj_exceed",
-                        type: "warning",
-                        title: "Projected Quota Limit Exceeded",
-                        subtitle: "Projected month-end consumption is ${forecast.projectedMonthEndUnits.toStringAsFixed(1)} Units (exceeds 96-unit quota by ${forecast.projectedExcessUnits.toStringAsFixed(1)} Units). Additional charges may apply.",
-                        timestamp: "Active",
-                        priority: "HIGH",
-                      ));
-                    }
+                      if (activeList.isEmpty) {
+                        final double excess = forecast != null
+                            ? (forecast.projectedExcessUnits > 0
+                                ? forecast.projectedExcessUnits
+                                : (forecast.projectedMonthEndUnits > quota ? forecast.projectedMonthEndUnits - quota : 0.0))
+                            : 0.0;
 
-                    if (forecast != null && forecast.usagePercentage >= 0.85 && forecast.remainingUnits > 0) {
-                      activeList.add(EnergyNotification(
-                        id: "local_approaching_limit",
-                        type: "warning",
-                        title: "Approaching Quota Limit",
-                        subtitle: "You have consumed ${forecast.monthToDateUnits.toStringAsFixed(1)} of 96 allocated units. Only ${forecast.remainingUnits.toStringAsFixed(1)} units remaining.",
-                        timestamp: "Active",
-                        priority: "HIGH",
-                      ));
-                    }
+                        if (forecast != null && (excess > 0 || forecast.projectedMonthEndUnits > quota)) {
+                          activeList.add(EnergyNotification(
+                            id: "local_proj_exceed",
+                            type: "warning",
+                            title: "Projected Quota Limit Exceeded",
+                            subtitle: "Projected month-end consumption is ${forecast.projectedMonthEndUnits.toStringAsFixed(1)} Units (exceeds ${quota.toStringAsFixed(0)}-unit quota by ${excess.toStringAsFixed(1)} Units). Additional charges may apply.",
+                            timestamp: "Active",
+                            priority: "HIGH",
+                          ));
+                        }
 
-                    if (pred != null && pred.room1.nextHourState == "HIGH USAGE") {
-                      activeList.add(EnergyNotification(
-                        id: "local_r1_next",
-                        type: "prediction",
-                        title: "High Usage Expected in Room 1",
-                        subtitle: "AI predicts high power load next hour (${pred.room1.nextHourConfidence.toStringAsFixed(0)}% confidence). Reduce non-essential loads.",
-                        timestamp: "Next 1h",
-                        priority: "MEDIUM",
-                      ));
-                    }
+                        final double usageRatio = (quota > 0 && forecast != null) ? (forecast.monthToDateUnits / quota) : 0.0;
+                        final double remainingUnits = (quota > 0 && forecast != null) ? (quota - forecast.monthToDateUnits).clamp(0.0, quota) : quota;
 
-                    if (pred != null && pred.room2.nextHourState == "HIGH USAGE") {
-                      activeList.add(EnergyNotification(
-                        id: "local_r2_next",
-                        type: "prediction",
-                        title: "High Usage Expected in Room 2",
-                        subtitle: "AI predicts high power load next hour (${pred.room2.nextHourConfidence.toStringAsFixed(0)}% confidence). Reduce non-essential loads.",
-                        timestamp: "Next 1h",
-                        priority: "MEDIUM",
-                      ));
-                    }
+                        if (forecast != null && (usageRatio >= 0.85 || forecast.usagePercentage >= 0.85) && remainingUnits > 0) {
+                          activeList.add(EnergyNotification(
+                            id: "local_approaching_limit",
+                            type: "warning",
+                            title: "Approaching Quota Limit",
+                            subtitle: "You have consumed ${forecast.monthToDateUnits.toStringAsFixed(1)} of ${quota.toStringAsFixed(0)} allocated units. Only ${remainingUnits.toStringAsFixed(1)} units remaining.",
+                            timestamp: "Active",
+                            priority: "HIGH",
+                          ));
+                        }
 
-                    if (pred != null && pred.room1.tomorrowState == "HIGH USAGE") {
-                      activeList.add(EnergyNotification(
-                        id: "local_r1_tmrw",
-                        type: "advance",
-                        title: "Advance Alert: High Usage Tomorrow (Room 1)",
-                        subtitle: "High energy consumption predicted in Room 1 tomorrow around this time (${pred.room1.tomorrowConfidence.toStringAsFixed(0)}% confidence). Plan to shift heavy loads.",
-                        timestamp: "Tomorrow",
-                        priority: "MEDIUM",
-                      ));
-                    }
+                        if (pred != null && pred.room1.nextHourState == "HIGH USAGE") {
+                          activeList.add(EnergyNotification(
+                            id: "local_r1_next",
+                            type: "prediction",
+                            title: "High Usage Expected in Room 1",
+                            subtitle: "AI predicts high power load next hour (${pred.room1.nextHourConfidence.toStringAsFixed(0)}% confidence). Reduce non-essential loads.",
+                            timestamp: "Next 1h",
+                            priority: "MEDIUM",
+                          ));
+                        }
 
-                    if (pred != null && pred.room2.tomorrowState == "HIGH USAGE") {
-                      activeList.add(EnergyNotification(
-                        id: "local_r2_tmrw",
-                        type: "advance",
-                        title: "Advance Alert: High Usage Tomorrow (Room 2)",
-                        subtitle: "High energy consumption predicted in Room 2 tomorrow around this time (${pred.room2.tomorrowConfidence.toStringAsFixed(0)}% confidence). Plan to shift heavy loads.",
-                        timestamp: "Tomorrow",
-                        priority: "MEDIUM",
-                      ));
-                    }
+                        if (pred != null && pred.room2.nextHourState == "HIGH USAGE") {
+                          activeList.add(EnergyNotification(
+                            id: "local_r2_next",
+                            type: "prediction",
+                            title: "High Usage Expected in Room 2",
+                            subtitle: "AI predicts high power load next hour (${pred.room2.nextHourConfidence.toStringAsFixed(0)}% confidence). Reduce non-essential loads.",
+                            timestamp: "Next 1h",
+                            priority: "MEDIUM",
+                          ));
+                        }
 
-                    // Default healthy status if no warnings
-                    if (activeList.isEmpty) {
-                      activeList.add(EnergyNotification(
-                        id: "local_optimal",
-                        type: "optimal",
-                        title: "All Rooms Operating Normally",
-                        subtitle: "Electricity consumption is well within the 96-unit monthly quota and no peak anomalies are predicted.",
-                        timestamp: "Just now",
-                        priority: "LOW",
-                      ));
-                    }
-                  }
+                        if (pred != null && pred.room1.tomorrowState == "HIGH USAGE") {
+                          activeList.add(EnergyNotification(
+                            id: "local_r1_tmrw",
+                            type: "advance",
+                            title: "Advance Alert: High Usage Tomorrow (Room 1)",
+                            subtitle: "High energy consumption predicted in Room 1 tomorrow around this time (${pred.room1.tomorrowConfidence.toStringAsFixed(0)}% confidence). Plan to shift heavy loads.",
+                            timestamp: "Tomorrow",
+                            priority: "MEDIUM",
+                          ));
+                        }
 
-                  return ListView.builder(
-                    padding: const EdgeInsets.all(16),
-                    itemCount: activeList.length,
-                    itemBuilder: (context, index) {
-                      final item = activeList[index];
-                      return buildNotificationCard(
-                        icon: getNotificationIcon(item.type),
-                        color: getNotificationColor(item.type, item.priority),
-                        title: item.title,
-                        subtitle: item.subtitle,
-                        time: item.timestamp,
+                        if (pred != null && pred.room2.tomorrowState == "HIGH USAGE") {
+                          activeList.add(EnergyNotification(
+                            id: "local_r2_tmrw",
+                            type: "advance",
+                            title: "Advance Alert: High Usage Tomorrow (Room 2)",
+                            subtitle: "High energy consumption predicted in Room 2 tomorrow around this time (${pred.room2.tomorrowConfidence.toStringAsFixed(0)}% confidence). Plan to shift heavy loads.",
+                            timestamp: "Tomorrow",
+                            priority: "MEDIUM",
+                          ));
+                        }
+
+                        // Default healthy status if no warnings
+                        if (activeList.isEmpty) {
+                          activeList.add(EnergyNotification(
+                            id: "local_optimal",
+                            type: "optimal",
+                            title: "All Rooms Operating Normally",
+                            subtitle: "Electricity consumption is well within the ${quota.toStringAsFixed(0)}-unit monthly quota and no peak anomalies are predicted.",
+                            timestamp: "Just now",
+                            priority: "LOW",
+                          ));
+                        }
+                      }
+
+                      return ListView.builder(
+                        padding: const EdgeInsets.all(16),
+                        itemCount: activeList.length,
+                        itemBuilder: (context, index) {
+                          final item = activeList[index];
+                          return buildNotificationCard(
+                            icon: getNotificationIcon(item.type),
+                            color: getNotificationColor(item.type, item.priority),
+                            title: item.title,
+                            subtitle: item.subtitle,
+                            time: item.timestamp,
+                          );
+                        },
                       );
                     },
                   );
