@@ -26,7 +26,7 @@ class EnergyService {
 
   /// Stream of recent historical readings for chart & energy accumulation (strictly chronological)
   Stream<List<EnergyReading>> get recentReadingsStream {
-    return readingsRef.onValue.map((event) {
+    return readingsRef.limitToLast(2000).onValue.map((event) {
       final raw = event.snapshot.value;
       if (raw is! Map) return [];
       final map = Map<dynamic, dynamic>.from(raw);

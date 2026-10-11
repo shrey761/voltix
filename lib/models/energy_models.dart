@@ -130,9 +130,9 @@ class RoomPredictionData {
       currentPower: parseD(map['currentPower']),
       predictedPower: parseD(map['predictedPower']),
       nextHourState: nextMap['state']?.toString() ?? "NORMAL",
-      nextHourConfidence: nextConf > 0.0 ? nextConf : 95.0,
+      nextHourConfidence: nextConf,
       tomorrowState: tmrwMap['state']?.toString() ?? "NORMAL",
-      tomorrowConfidence: tmrwConf > 0.0 ? tmrwConf : 90.0,
+      tomorrowConfidence: tmrwConf,
       recommendations: recs,
     );
   }

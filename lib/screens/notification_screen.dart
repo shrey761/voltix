@@ -82,7 +82,7 @@ class NotificationScreen extends StatelessWidget {
                             id: "local_r1_next",
                             type: "prediction",
                             title: "High Usage Expected in Room 1",
-                            subtitle: "AI predicts high power load next hour (${pred.room1.nextHourConfidence.toStringAsFixed(0)}% confidence). Reduce non-essential loads.",
+                            subtitle: "AI predicts high power load next hour${pred.room1.nextHourConfidence > 0 ? " (${pred.room1.nextHourConfidence.toStringAsFixed(0)}% confidence)" : ""}. Reduce non-essential loads.",
                             timestamp: "Next 1h",
                             priority: "MEDIUM",
                           ));
@@ -93,7 +93,7 @@ class NotificationScreen extends StatelessWidget {
                             id: "local_r2_next",
                             type: "prediction",
                             title: "High Usage Expected in Room 2",
-                            subtitle: "AI predicts high power load next hour (${pred.room2.nextHourConfidence.toStringAsFixed(0)}% confidence). Reduce non-essential loads.",
+                            subtitle: "AI predicts high power load next hour${pred.room2.nextHourConfidence > 0 ? " (${pred.room2.nextHourConfidence.toStringAsFixed(0)}% confidence)" : ""}. Reduce non-essential loads.",
                             timestamp: "Next 1h",
                             priority: "MEDIUM",
                           ));
@@ -104,7 +104,7 @@ class NotificationScreen extends StatelessWidget {
                             id: "local_r1_tmrw",
                             type: "advance",
                             title: "Advance Alert: High Usage Tomorrow (Room 1)",
-                            subtitle: "High energy consumption predicted in Room 1 tomorrow around this time (${pred.room1.tomorrowConfidence.toStringAsFixed(0)}% confidence). Plan to shift heavy loads.",
+                            subtitle: "High energy consumption predicted in Room 1 tomorrow around this time${pred.room1.tomorrowConfidence > 0 ? " (${pred.room1.tomorrowConfidence.toStringAsFixed(0)}% confidence)" : ""}. Plan to shift heavy loads.",
                             timestamp: "Tomorrow",
                             priority: "MEDIUM",
                           ));
@@ -115,7 +115,7 @@ class NotificationScreen extends StatelessWidget {
                             id: "local_r2_tmrw",
                             type: "advance",
                             title: "Advance Alert: High Usage Tomorrow (Room 2)",
-                            subtitle: "High energy consumption predicted in Room 2 tomorrow around this time (${pred.room2.tomorrowConfidence.toStringAsFixed(0)}% confidence). Plan to shift heavy loads.",
+                            subtitle: "High energy consumption predicted in Room 2 tomorrow around this time${pred.room2.tomorrowConfidence > 0 ? " (${pred.room2.tomorrowConfidence.toStringAsFixed(0)}% confidence)" : ""}. Plan to shift heavy loads.",
                             timestamp: "Tomorrow",
                             priority: "MEDIUM",
                           ));

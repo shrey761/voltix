@@ -35,15 +35,15 @@ class PredictionScreen extends StatelessWidget {
 
               final bool hasPrediction = pred != null;
               final r1Next = pred?.room1.nextHourState ?? (p1 >= 40.0 ? "HIGH USAGE" : "NORMAL");
-              final r1NextConf = pred?.room1.nextHourConfidence ?? 96.0;
+              final r1NextConf = pred?.room1.nextHourConfidence ?? 0.0;
               final r1Tmrw = pred?.room1.tomorrowState ?? "NORMAL";
-              final r1TmrwConf = pred?.room1.tomorrowConfidence ?? 92.0;
+              final r1TmrwConf = pred?.room1.tomorrowConfidence ?? 0.0;
               final r1PredP = pred?.room1.predictedPower ?? p1;
 
               final r2Next = pred?.room2.nextHourState ?? (p2 >= 10.0 ? "HIGH USAGE" : "NORMAL");
-              final r2NextConf = pred?.room2.nextHourConfidence ?? 98.0;
+              final r2NextConf = pred?.room2.nextHourConfidence ?? 0.0;
               final r2Tmrw = pred?.room2.tomorrowState ?? "NORMAL";
-              final r2TmrwConf = pred?.room2.tomorrowConfidence ?? 90.0;
+              final r2TmrwConf = pred?.room2.tomorrowConfidence ?? 0.0;
               final r2PredP = pred?.room2.predictedPower ?? p2;
 
               final double totalPredP = r1PredP + r2PredP;
@@ -138,7 +138,7 @@ class PredictionScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 12),
                           Text(
-                            "${(totalPredP / 1000.0).toStringAsFixed(2)} kW",
+                            "${totalPredP.toStringAsFixed(1)} W",
                             style: const TextStyle(
                               color: Colors.white,
                               fontSize: 34,
@@ -147,7 +147,7 @@ class PredictionScreen extends StatelessWidget {
                           ),
                           const SizedBox(height: 6),
                           Text(
-                            "Current Measured: ${(totalP / 1000.0).toStringAsFixed(2)} kW",
+                            "Current Measured: ${totalP.toStringAsFixed(1)} W",
                             style: const TextStyle(color: Colors.orangeAccent, fontSize: 13),
                           ),
                         ],
@@ -399,7 +399,7 @@ class PredictionScreen extends StatelessWidget {
                   const Text("Confidence", style: TextStyle(color: Colors.white54, fontSize: 12)),
                   const SizedBox(height: 4),
                   Text(
-                    "${nextHourConf.toStringAsFixed(0)}%",
+                    nextHourConf > 0 ? "${nextHourConf.toStringAsFixed(0)}%" : "Pending",
                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                   ),
                 ],
@@ -440,7 +440,7 @@ class PredictionScreen extends StatelessWidget {
                   const Text("Confidence", style: TextStyle(color: Colors.white54, fontSize: 12)),
                   const SizedBox(height: 4),
                   Text(
-                    "${tomorrowConf.toStringAsFixed(0)}%",
+                    tomorrowConf > 0 ? "${tomorrowConf.toStringAsFixed(0)}%" : "Pending",
                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 14),
                   ),
                 ],

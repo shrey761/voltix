@@ -49,7 +49,12 @@ class HomeScreen extends StatelessWidget {
           StreamBuilder<List<EnergyNotification>>(
             stream: energyService.notificationsStream,
             builder: (context, notifSnap) {
-              final count = notifSnap.data?.length ?? 0;
+              final actionableCount = notifSnap.data
+                      ?.where((n) =>
+                          n.type.toLowerCase() != 'optimal' &&
+                          n.priority.toUpperCase() != 'LOW')
+                      .length ??
+                  0;
               return Stack(
                 alignment: Alignment.center,
                 children: [
@@ -67,7 +72,7 @@ class HomeScreen extends StatelessWidget {
                       );
                     },
                   ),
-                  if (count > 0)
+                  if (actionableCount > 0)
                     Positioned(
                       right: 8,
                       top: 8,
@@ -82,7 +87,7 @@ class HomeScreen extends StatelessWidget {
                           minHeight: 16,
                         ),
                         child: Text(
-                          '$count',
+                          '$actionableCount',
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 10,
@@ -773,7 +778,7 @@ class HomeScreen extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             Text(
-              "Room 1: ${pred.room1.nextHourState} (${pred.room1.nextHourConfidence.toStringAsFixed(0)}%) • Room 2: ${pred.room2.nextHourState} (${pred.room2.nextHourConfidence.toStringAsFixed(0)}%)",
+              "Room 1: ${pred.room1.nextHourState} (${pred.room1.nextHourConfidence > 0 ? "${pred.room1.nextHourConfidence.toStringAsFixed(0)}%" : "Pending"}) • Room 2: ${pred.room2.nextHourState} (${pred.room2.nextHourConfidence > 0 ? "${pred.room2.nextHourConfidence.toStringAsFixed(0)}%" : "Pending"})",
               style: TextStyle(
                 color: Colors.white.withValues(alpha: 0.7),
                 fontSize: 12,
